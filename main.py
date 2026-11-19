@@ -19,7 +19,7 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
   args        自定义变量分组字典：{分组名: {变量名: 值}}
   cmd         主指令名
   alias       命中的别名（主名触发时为空串）
-  value       指令名后面的参数文本（原始字符串）
+  value       指令名后的参数列表（模板占位内容在首位）
   sender_id / sender_name / group_id
 脚本返回值直接转字符串回复（str 原样；dict/list 转 JSON；None/空不回复）；
 脚本报错/超时默认无回复，仅记后端日志，不影响机器人运行。
@@ -125,7 +125,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.7.0",
+    "1.7.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -402,20 +402,27 @@ class GroupVarCommands(Star):
         if body[:1] in ("/", "／"):
             body = body[1:].lstrip()
         trigger_entries = self._trigger_index(cmds)
+        tokens = body.split()
         for tok, canon, kind, pat in trigger_entries:
             if kind == "fixed":
                 if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
-                    args = body[len(tok):].strip().split()
-                    async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], args, tok):
+                    value_list = body[len(tok):].split()
+                    async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
                         yield r
                     return
             else:
-                m = pat.match(body)
-                if m:
-                    val = m.group(1).strip()
-                    async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], val.split(), tok):
-                        yield r
-                    return
+                # 模板：先整句匹配，再逐个去掉尾部参数 token 重试（尾部 token 并入 value）
+                for i in range(len(tokens), 0, -1):
+                    prefix = " ".join(tokens[:i])
+                    m = pat.match(prefix)
+                    if m:
+                        val = m.group(1).strip()
+                        if not val:
+                            continue
+                        value_list = [val] + [t for t in tokens[i:] if t.strip()]
+                        async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
+                            yield r
+                        return
 
     # ---------------- 权限校验 ----------------
 
@@ -478,7 +485,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 指令执行 ----------------
 
-    async def _execute(self, event, cfg, gcfg, name, cmd_cfg, args, triggered=None):
+    async def _execute(self, event, cfg, gcfg, name, cmd_cfg, value_list, triggered=None):
         ok, why = await self._check_perm(event, gcfg, cmd_cfg.get("perm", "member"))
         if not ok:
             yield event.plain_result(f"⛔ {why}")
@@ -498,7 +505,7 @@ class GroupVarCommands(Star):
             "args": copy.deepcopy(gcfg.get("groups", {}) or {}),
             "cmd": name,
             "alias": "" if (triggered is None or triggered == name) else str(triggered),
-            "value": " ".join(args),
+            "value": value_list,
             "vars": copy.deepcopy(gcfg.get("vars", {}) or {}),
             "sender_id": str(event.sender_id),
             "sender_name": str(sender_name),

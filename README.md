@@ -53,7 +53,7 @@ v1.3.0 变化：删除了“入参绑定”——脚本不再需要声明来源�
 | `args` | dict | 自定义变量分组全量：`{"分组名": {"变量名": 值, ...}, ...}` |
 | `cmd` | str | 主指令名 |
 | `alias` | str | 命中的别名；用主指令名触发时为空串 |
-| `value` | str | 指令名后面的参数原文（如 `状态 1区` 中的 `1区`） |
+| `value` | list | 指令名后的参数列表（空格拆分；模板命中时占位内容在首位，如 `查二服玩家 12312` → `["二服", "12312"]`） |
 | `sender_id` | str | 触发者 QQ 号 |
 | `sender_name` | str | 触发者昵称 |
 | `group_id` | str | 群号 |
@@ -71,9 +71,9 @@ v1.3.0 变化：删除了“入参绑定”——脚本不再需要声明来源�
 ```
 状态
 /状态
-状态 1区          ← cmd="状态"，value="1区"
-s 1区             ← 别名触发：cmd="状态"，alias="s"，value="1区"
-查二服玩家        ← 模板别名 查{value}玩家：cmd="玩家"，alias="查{value}玩家"，value="二服"
+状态 1区 2区       ← cmd="状态"，value=["1区", "2区"]
+s 1区              ← 别名触发：cmd="状态"，alias="s"，value=["1区"]
+查二服玩家 12312   ← 模板别名 查{value}玩家：cmd="玩家"，value=["二服", "12312"]
 ```
 
 按指令名最长优先匹配；指令名不含空格；未配置的群/指令一律静默。
@@ -97,7 +97,7 @@ s 1区             ← 别名触发：cmd="状态"，alias="s"，value="1区"
           "aliases": ["s", "查询"]
         },
         "重启": {
-          "script": "def main(cmd, value):\n    return \"已下发重启\"",
+          "script": "def main(cmd, value):\n    return \"已下发重启: \" + (value[0] if value else \"默认\")",
           "perm": "admin",
           "aliases": []
         }
@@ -111,7 +111,7 @@ s 1区             ← 别名触发：cmd="状态"，alias="s"，value="1区"
 
 ```python
 def main(cmd, value):
-    return "Hello, " + (value or "World") + "!"
+    return "Hello, " + (value[0] if value else "World") + "!"
 ```
 
 群成员发 `问候` → `Hello, World!`；发 `问候 AstrBot` → `Hello, AstrBot!`
