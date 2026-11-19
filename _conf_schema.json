@@ -1,0 +1,24 @@
+{
+  "admins": {
+    "description": "管理员QQ号列表",
+    "type": "list",
+    "default": [],
+    "hint": "只有这些用户可以使用管理指令（如 /gvc add、/gvc cmd script 等）。第一位管理员建议在这里手动填写。"
+  },
+  "admin_prefix": {
+    "description": "管理指令前缀",
+    "type": "string",
+    "default": "/gvc"
+  },
+  "script_timeout": {
+    "description": "Python 脚本执行超时(秒)",
+    "type": "int",
+    "default": 30
+  },
+  "groups": {
+    "description": "按群号配置(群号 -> 变量/分组/指令)",
+    "type": "dict",
+    "default": {},
+    "hint": "结构见 README。建议用群内管理指令维护，也可以直接编辑本 JSON。"
+  }
+}
