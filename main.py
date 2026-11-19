@@ -125,7 +125,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.8.1",
+    "1.8.2",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -298,6 +298,41 @@ class GroupVarCommands(Star):
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
         return json_response({"saved": True})
 
+    # ---------------- 跨平台事件适配 ----------------
+
+    @staticmethod
+    def _group_id(event) -> str:
+        try:
+            gid = event.get_group_id()
+        except Exception:
+            gid = ""
+        if not gid:
+            gid = (
+                getattr(event, "group_id", "")
+                or getattr(getattr(event, "message_obj", None), "group_id", "")
+                or ""
+            )
+        return str(gid or "")
+
+    @staticmethod
+    def _sender_id(event) -> str:
+        sid = ""
+        try:
+            sid = event.get_sender_id() or ""
+        except Exception:
+            sid = ""
+        if not sid:
+            sender = getattr(getattr(event, "message_obj", None), "sender", None)
+            sid = str(getattr(sender, "user_id", "") or getattr(event, "sender_id", "") or "")
+        return sid
+
+    @staticmethod
+    def _sender_name(event, fallback: str) -> str:
+        try:
+            return event.get_sender_name() or fallback
+        except Exception:
+            return fallback
+
     # ---------------- 脚本执行 ----------------
 
     async def _run_script(self, script_text: str, kwargs: dict, timeout: int):
@@ -389,10 +424,10 @@ class GroupVarCommands(Star):
 
     @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
-        if not event.is_group():
+        group_id = self._group_id(event)
+        if not group_id:
             return
         cfg = self._cfg()
-        group_id = str(event.group_id or "")
         gcfg = cfg.get("groups", {}).get(group_id)
         if not gcfg:
             return
@@ -441,7 +476,7 @@ class GroupVarCommands(Star):
 
     async def _get_role(self, event):
         """尽力获取发送者群角色: member/admin/owner，失败返回 None"""
-        gid, uid = str(event.group_id), str(event.sender_id)
+        gid, uid = self._group_id(event), self._sender_id(event)
         key = (gid, uid)
         now = time.time()
         hit = self._role_cache.get(key)
@@ -453,6 +488,18 @@ class GroupVarCommands(Star):
             r = raw.get("member_role") or raw.get("role")
             if isinstance(r, str) and r in ROLE_RANK:
                 role = r
+            else:
+                # QQ 官方机器人 raw 结构 member_roles: 1=群主 2=管理
+                author = raw.get("author") if isinstance(raw.get("author"), dict) else raw
+                roles = author.get("member_roles") if isinstance(author, dict) else None
+                if isinstance(roles, list):
+                    rset = {str(x) for x in roles}
+                    if "1" in rset:
+                        role = "owner"
+                    elif "2" in rset:
+                        role = "admin"
+                    elif rset:
+                        role = "member"
         if role is None:
             bot = getattr(event, "bot", None)
             if bot is not None and hasattr(bot, "call_api"):
@@ -474,7 +521,7 @@ class GroupVarCommands(Star):
     async def _check_perm(self, event, gcfg, perm):
         """返回 (allowed, 拒绝原因或 None)；本群超级管理员无条件放行"""
         perm = perm if perm in PERM_LEVELS else "member"
-        if str(event.sender_id) in self._super_set(gcfg):
+        if self._sender_id(event) in self._super_set(gcfg):
             return True, None
         if perm == "member":
             return True, None
@@ -502,9 +549,9 @@ class GroupVarCommands(Star):
             )
             return
         try:
-            sender_name = event.get_sender_name()
+            sender_name = self._sender_name(event, self._sender_id(event))
         except Exception:
-            sender_name = str(event.sender_id)
+            sender_name = self._sender_id(event)
         # 默认入参：RUNNER 会按脚本 main() 实际声明的形参自动筛选
         kwargs = {
             "args": copy.deepcopy(gcfg.get("groups", {}) or {}),
@@ -512,9 +559,9 @@ class GroupVarCommands(Star):
             "alias": "" if (triggered is None or triggered == name) else str(triggered),
             "value": value_list,
             "vars": copy.deepcopy(gcfg.get("vars", {}) or {}),
-            "sender_id": str(event.sender_id),
+            "sender_id": self._sender_id(event),
             "sender_name": str(sender_name),
-            "group_id": str(event.group_id),
+            "group_id": self._group_id(event),
         }
         timeout = int(cfg.get("script_timeout", 30) or 30)
         result, printed, err = await self._run_script(script, kwargs, timeout)
