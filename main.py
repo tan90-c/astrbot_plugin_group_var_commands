@@ -20,7 +20,6 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
   cmd         主指令名
   alias       命中的别名（主名触发时为空串）
   value       指令名后的参数列表（模板占位内容在首位）
-  sender_id / sender_name / group_id
 脚本返回值直接转字符串回复（str 原样；dict/list 转 JSON；None/空不回复）；
 脚本报错/超时默认无回复，仅记后端日志，不影响机器人运行。
 """
@@ -116,7 +115,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.2.0",
+    "2.2.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -357,25 +356,6 @@ class GroupVarCommands(Star):
             )
         return str(gid or "")
 
-    @staticmethod
-    def _sender_id(event) -> str:
-        sid = ""
-        try:
-            sid = event.get_sender_id() or ""
-        except Exception:
-            sid = ""
-        if not sid:
-            sender = getattr(getattr(event, "message_obj", None), "sender", None)
-            sid = str(getattr(sender, "user_id", "") or getattr(event, "sender_id", "") or "")
-        return sid
-
-    @staticmethod
-    def _sender_name(event, fallback: str) -> str:
-        try:
-            return event.get_sender_name() or fallback
-        except Exception:
-            return fallback
-
     # ---------------- 脚本执行 ----------------
 
     async def _run_script(self, script_text: str, kwargs: dict, timeout: int):
@@ -512,19 +492,12 @@ class GroupVarCommands(Star):
                 f"指令「{name}」尚未配置脚本，请在 WebUI 插件控制面板或设置页中补充。"
             )
             return
-        try:
-            sender_name = self._sender_name(event, self._sender_id(event))
-        except Exception:
-            sender_name = self._sender_id(event)
         # 默认入参：RUNNER 会按脚本 main() 实际声明的形参自动筛选
         kwargs = {
             "args": copy.deepcopy(gcfg.get("groups", {}) or {}),
             "cmd": name,
             "alias": "" if (triggered is None or triggered == name) else str(triggered),
             "value": value_list,
-            "sender_id": self._sender_id(event),
-            "sender_name": str(sender_name),
-            "group_id": self._group_id(event),
         }
         timeout = int(cfg.get("script_timeout", 30) or 30)
         result, printed, err = await self._run_script(script, kwargs, timeout)
