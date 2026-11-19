@@ -115,7 +115,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.3.0",
+    "2.4.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -134,6 +134,7 @@ class GroupVarCommands(Star):
         if not isinstance(cfg, dict):
             return {}
         cfg.setdefault("script_timeout", 30)
+        cfg.setdefault("reply_format", "markdown")
         cfg.setdefault("groups", {})
         return cfg
 
@@ -170,6 +171,7 @@ class GroupVarCommands(Star):
         cfg = self._cfg()
         return {
             "script_timeout": cfg.get("script_timeout", 30),
+            "reply_format": cfg.get("reply_format", "markdown"),
             "groups": copy.deepcopy(cfg.get("groups", {})),
         }
 
@@ -183,6 +185,9 @@ class GroupVarCommands(Star):
             raise ValueError("script_timeout 必须是数字")
         if not 1 <= timeout <= 600:
             raise ValueError("script_timeout 需在 1-600 秒之间")
+        reply_format = str(data.get("reply_format", "markdown")).strip().lower()
+        if reply_format not in ("markdown", "text"):
+            raise ValueError("reply_format 须为 markdown 或 text")
         groups_in = data.get("groups")
         if not isinstance(groups_in, dict):
             raise ValueError("groups 必须是 JSON 对象（会话来源 umo -> 配置）")
@@ -239,7 +244,7 @@ class GroupVarCommands(Star):
                 },
                 "commands": cmds,
             }
-        return {"script_timeout": timeout, "groups": groups}
+        return {"script_timeout": timeout, "reply_format": reply_format, "groups": groups}
 
     async def _save(self) -> bool:
         try:
@@ -265,6 +270,7 @@ class GroupVarCommands(Star):
             return error_response(str(e), status_code=400)
         cfg = self._cfg()
         cfg["script_timeout"] = cleaned["script_timeout"]
+        cfg["reply_format"] = cleaned["reply_format"]
         cfg["groups"] = cleaned["groups"]
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
@@ -408,6 +414,11 @@ class GroupVarCommands(Star):
         return None, "", "脚本执行出错: " + text[-1500:]
 
     @staticmethod
+    def _sanitize_plain(body: str) -> str:
+        """text 模式：QQ 官方 markdown 卡片在 PC 端会吞掉 ** 之间的内容，转义规避"""
+        return body.replace("**", "*")
+
+    @staticmethod
     def _result_to_text(result) -> str:
         """脚本返回值直接转字符串：str原样，dict/list转JSON，其他str()"""
         if result is None:
@@ -534,4 +545,6 @@ class GroupVarCommands(Star):
             body = (printed + "\n──────\n" + body) if body else printed
         if not body.strip():
             return
+        if str(cfg.get("reply_format", "markdown")).lower() == "text":
+            body = self._sanitize_plain(body)
         yield event.plain_result(body)
