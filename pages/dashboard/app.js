@@ -17,7 +17,7 @@ const PARAM_HINT =
   "  args        自定义变量分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
   "  cmd         主指令名\n" +
   "  alias       命中的别名（用主指令名触发时为空串）\n" +
-  "  value       参数列表：普通触发按空格拆分；模板占位内容在首位（如 查{value}玩家 + \"查二服玩家 123\" → value=[\"二服\", \"123\"]）\n" +
+  "  value       参数列表：普通触发按空格拆分；模板别名如 查{*}玩家，“查二服玩家 123”→ value=[\"二服\", \"123\"]; 多个 {*} 按顺序各捕获一个元素\n" +
   "  模板别名如 查{value}玩家：发“查二服玩家”→ cmd=主指令名, alias=模板原文, value=二服" +
   "  sender_id / sender_name / group_id";
 
@@ -327,7 +327,7 @@ function renderCmdBody() {
   const labAlias = document.createElement("div");
   labAlias.className = "hint";
   labAlias.style.marginTop = "12px";
-  labAlias.textContent = "附属指令名（别名，可多个）：支持 {value} 占位符模板（如 查{value}玩家，命中时 value 抽取中间文字）；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效";
+  labAlias.textContent = "附属指令名（别名，可多个）：支持 {*} 占位符模板，可多个，每个按顺序捕获为 value 的一个元素（如 查{*}玩{*}家{*}）；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效";
   const tbAl = document.createElement("table");
   tbAl.innerHTML = "<tr><th>别名</th><th>操作</th></tr>";
   const alRows = [];

@@ -96,7 +96,7 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
       <button class="btn small" id="btnAddCmd">创建指令</button>
       <button class="btn small danger" id="btnDelCmd">删除指令</button>
     </div>
-    <div class="hint" style="margin:8px 0">群成员发送「指令名/别名 值」或加 / 前缀触发；主指令名唯一，附属指令名（别名）可多个；脚本 def main(...) 取默认入参（args/cmd/alias/value/…），返回值转字符串直接回复，报错时静默。</div>
+    <div class="hint" style="margin:8px 0">群成员发送「指令名/别名 值」或加 / 前缀触发；主指令名唯一，别名可多个且支持 {*} 模板（如 查{*}玩家）；脚本 def main(...) 取默认入参（args/cmd/alias/value/…），返回值转字符串直接回复，报错时静默。</div>
     <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
   </div>
 

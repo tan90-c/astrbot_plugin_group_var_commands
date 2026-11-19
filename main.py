@@ -125,7 +125,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.7.1",
+    "1.8.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -238,17 +238,15 @@ class GroupVarCommands(Star):
                     raise ValueError(f"指令 {cname} 的 aliases 必须是数组")
                 aliases = []
                 for a in aliases_in:
-                    a = str(a).strip()
+                    a = self._norm_token(str(a).strip())
                     if not a:
                         continue
                     if re.search(r"\s", a):
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能含空格")
-                    if a.count("{value}") > 1:
-                        raise ValueError(f"指令 {cname} 的别名 {a} 只能含一个占位符")
-                    tmp = a.replace("{value}", "")
+                    tmp = a.replace("{*}", "")
                     if "{" in tmp or "}" in tmp:
-                        raise ValueError(f"指令 {cname} 的别名 {a} 只允许使用 {{value}} 占位符")
-                    if "{value}" in a and not tmp:
+                        raise ValueError(f"指令 {cname} 的别名 {a} 只允许使用 {{*}} 占位符")
+                    if "{*}" in a and not tmp:
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能只是占位符，需有固定文字")
                     if a == cname:
                         continue
@@ -358,28 +356,35 @@ class GroupVarCommands(Star):
 
     # ---------------- 消息入口 ----------------
 
+    @staticmethod
+    def _norm_token(tok: str) -> str:
+        """统一模板写法：旧 {value} 自动转为 {*}"""
+        return tok.replace("{value}", "{*}")
+
     def _trigger_index(self, cmds: dict):
         """构建触发项表：主名优先；别名与其他主名重复→归主名指令；
-        别名之间重复→后创建的指令赢。支持 {value} 模板别名（如 查{value}玩家）。"""
+        别名之间重复→后创建的指令赢。模板别名支持多个 {*} 占位，
+        每个 {*} 按顺序捕获为 value 的一个元素（如 查{*}玩{*}家{*}）。"""
         trigger = {}
         for cname in cmds:
             trigger[cname] = cname
         for cname, c in cmds.items():
             for a in (c or {}).get("aliases", []) or []:
-                a = str(a).strip()
+                a = self._norm_token(str(a).strip())
                 if not a or a in cmds:  # 与主名重复→主名指令赢，跳过
                     continue
                 trigger[a] = cname  # 别名间重复→后创建者覆盖
         entries = []
         for tok, canon in trigger.items():
-            if "{value}" in tok:
-                lit = tok.replace("{value}", "\x00")
-                pattern = re.compile("^" + re.escape(lit).replace("\x00", "(.+?)") + "$")
-                entries.append((tok, canon, "tpl", pattern))
+            tok = self._norm_token(tok)
+            if "{*}" in tok:
+                parts = tok.split("{*}")
+                pattern = "^" + "(.+?)".join(re.escape(p) for p in parts) + "$"
+                entries.append((tok, canon, "tpl", re.compile(pattern)))
             else:
                 entries.append((tok, canon, "fixed", None))
-        # 字面部分长的优先；同长时非模板优先
-        entries.sort(key=lambda e: (len(e[0].replace("{value}", "")), "{value}" not in e[0]), reverse=True)
+        # 固定文字部分长的优先；同长时非模板优先
+        entries.sort(key=lambda e: (len(e[0].replace("{*}", "")), "{*}" not in e[0]), reverse=True)
         return entries
 
     @_ALL_MESSAGE
@@ -411,15 +416,15 @@ class GroupVarCommands(Star):
                         yield r
                     return
             else:
-                # 模板：先整句匹配，再逐个去掉尾部参数 token 重试（尾部 token 并入 value）
+                # 模板：先整句匹配，再逐个去掉尾部参数 token 重试（尾部 token 并入 value 尾部）
                 for i in range(len(tokens), 0, -1):
                     prefix = " ".join(tokens[:i])
                     m = pat.match(prefix)
                     if m:
-                        val = m.group(1).strip()
-                        if not val:
+                        caps = [g.strip() for g in m.groups()]
+                        if not all(caps):
                             continue
-                        value_list = [val] + [t for t in tokens[i:] if t.strip()]
+                        value_list = caps + [t for t in tokens[i:] if t.strip()]
                         async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
                             yield r
                         return
