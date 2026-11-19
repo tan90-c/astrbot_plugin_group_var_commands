@@ -10,6 +10,7 @@ AstrBot 插件：自定义函数指令 (astrbot_plugin_group_var_commands)
 配置结构（groups 的键 = 会话来源 umo，群聊与私聊均可绑定，面板“绑定会话”自动填写）：
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
 - groups.<会话>.note      备注名（面板左侧列表显示用，可空）
+- groups.<会话>.bind      绑定的主会话 umo（非空=本会话只读跟随主会话，原内容保留）
 - groups.<会话>.modules   全局函数模块（模块名 -> Python 源码，指令脚本 import 即用）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
@@ -120,7 +121,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.0.3",
+    "1.1.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -213,6 +214,9 @@ class GroupVarCommands(Star):
             note = g.get("note", "") or ""
             if not isinstance(note, str):
                 raise ValueError(f"会话 {gid} 的备注名必须是字符串")
+            bind = g.get("bind", "") or ""
+            if not isinstance(bind, str):
+                raise ValueError(f"会话 {gid} 的 bind 必须是字符串")
             if not isinstance(mods_in, dict):
                 raise ValueError(f"群 {gid} 的 modules 必须是对象（模块名 -> Python 源码）")
             modules: dict = {}
@@ -258,6 +262,7 @@ class GroupVarCommands(Star):
             groups[gid] = {
                 "aggregate": True,
                 "note": note.strip(),
+                "bind": bind.strip(),
                 "modules": modules,
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
@@ -265,6 +270,16 @@ class GroupVarCommands(Star):
                 },
                 "commands": cmds,
             }
+        # 绑定关系检查：禁自绑、禁链式（目标本身是绑定会话）；悬空绑定允许（主会话可能被删除）
+        for gid, g in groups.items():
+            b = g.get("bind", "")
+            if not b:
+                continue
+            if b == gid:
+                raise ValueError(f"会话 {gid} 不能绑定自身")
+            tgt = groups.get(b)
+            if tgt is not None and tgt.get("bind"):
+                raise ValueError(f"绑定目标 {b} 自身是绑定会话，不允许链式绑定")
         return {"script_timeout": timeout, "reply_format": reply_format, "groups": groups}
 
     async def _save(self) -> bool:
@@ -530,6 +545,9 @@ class GroupVarCommands(Star):
         await self._record_session(event, key, group_id)
         if not gcfg:
             return
+        bind = str(gcfg.get("bind", "") or "").strip()
+        if bind:
+            gcfg = groups.get(bind) or {}
         cmds = gcfg.get("commands", {})
         if not cmds:
             return

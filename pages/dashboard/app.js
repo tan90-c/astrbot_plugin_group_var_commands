@@ -94,14 +94,33 @@ function gcur() {
   const g = cfg.groups[selGroup];
   if (!g) return null;
   g.note = typeof g.note === "string" ? g.note : "";
+  g.bind = typeof g.bind === "string" ? g.bind : "";
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
   return g;
 }
 
+function gBound() {
+  const g = gcur();
+  return !!(g && g.bind);
+}
+
+// 生效配置：绑定会话取主会话；主会话不存在时视为空配置
+function gEff() {
+  const g = gcur();
+  if (!g) return null;
+  if (g.bind) {
+    const m = cfg.groups[g.bind];
+    if (!m) return { note: "", bind: "", modules: {}, groups: {}, commands: {} };
+    return m;
+  }
+  return g;
+}
+
 function normGroup(g) {
   g.note = typeof g.note === "string" ? g.note : "";
+  g.bind = typeof g.bind === "string" ? g.bind : "";
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
@@ -373,9 +392,10 @@ function renderSidebar() {
     const info = gkeyInfo(key);
     const g = cfg.groups[key];
     const disp = (g && g.note) || info.name;
-    const nCmd = Object.keys((g && g.commands) || {}).length;
+    const eff = (g && g.bind && cfg.groups[g.bind]) || g;
+    const nCmd = Object.keys((eff && eff.commands) || {}).length;
     if (kw && !disp.toLowerCase().includes(kw) && !info.name.toLowerCase().includes(kw) && !key.toLowerCase().includes(kw)) continue;
-    mk("", info.type === "private" ? "💬" : "🤖", disp, `${nCmd} 条指令 · ${info.sub}`, selGroup === key, () => {
+    mk("", info.type === "private" ? "💬" : "🤖", disp, `${nCmd} 条指令${g && g.bind ? " · 🔗绑定" : ""} · ${info.sub}`, selGroup === key, () => {
       selGroup = key; selCmd = ""; selAgg = ""; selMod = ""; renderAll();
     });
   }
@@ -390,6 +410,16 @@ function renderViews() {
   const g0 = gcur();
   $("gTitle").textContent = gkeyInfo(selGroup).name;
   $("groupNote").value = g0 ? g0.note : "";
+  const banner = $("bindBanner");
+  if (g0 && g0.bind) {
+    banner.style.display = "";
+    banner.textContent = cfg.groups[g0.bind]
+      ? `🔗 已绑定到「${gkeyInfo(g0.bind).name}」：内容跟随主会话且不可编辑（备注名与删除本标签除外）；解除绑定或修改主会话内容都会即时反映到这里`
+      : `⚠ 绑定的主会话已不存在，本会话指令不会触发。请点击「解绑会话」解除，或改绑其他主会话`;
+  } else {
+    banner.style.display = "none";
+    banner.textContent = "";
+  }
 }
 
 function renderAll() {
@@ -398,7 +428,7 @@ function renderAll() {
   renderSidebar();
   renderViews();
   if (!selGroup) return;
-  const g = gcur();
+  const g = gEff();
 
   const as = $("aggSelect");
   as.innerHTML = "";
@@ -439,26 +469,40 @@ function renderAll() {
 
   renderCopySelect();
   renderRaw();
+  applyBoundLock();
   $("dirtyTip").textContent = dirty ? "● 未保存" : "";
+}
+
+function applyBoundLock() {
+  if (!gBound()) return;
+  const host = $("groupView");
+  host.querySelectorAll("input, textarea, select, button").forEach((el) => {
+    if (el.id === "groupNote" || el.id === "btnDelGroup" || el.id === "btnBind") return;
+    el.disabled = true;
+  });
 }
 
 function renderCopySelect() {
   const sel = $("copyFromSelect");
   sel.innerHTML = "";
+  const g = gcur();
+  const bound = !!(g && g.bind);
   const others = gids().filter((k) => k !== selGroup);
-  if (!others.length) {
-    sel.appendChild(new Option("（没有其他标签页）", ""));
-    $("btnCopyVars").disabled = $("btnCopyCmds").disabled = $("btnCopyAll").disabled = true;
-    return;
+  for (const k of others) {
+    sel.appendChild(new Option(gkeyInfo(k).name + (cfg.groups[k].bind ? "（已是绑定会话）" : ""), k));
   }
-  for (const k of others) sel.appendChild(new Option(gkeyInfo(k).name, k));
-  $("btnCopyVars").disabled = $("btnCopyCmds").disabled = $("btnCopyAll").disabled = false;
+  if (!others.length) sel.appendChild(new Option("（没有其他标签页）", ""));
+  if (bound && cfg.groups[g.bind]) sel.value = g.bind;
+  sel.disabled = bound;
+  $("btnCopyAll").disabled = bound || !others.length;
+  $("btnBind").textContent = bound ? "解绑会话" : "绑定会话";
+  $("btnBind").disabled = bound ? false : !others.length;
 }
 
 function renderModBody() {
   const host = $("modBody");
   host.innerHTML = "";
-  const g = gcur();
+  const g = gEff();
   if (!g || !selMod || g.modules[selMod] === undefined) {
     host.innerHTML = '<div class="empty">请先创建或选择模块</div>';
     return;
@@ -472,7 +516,7 @@ function renderModBody() {
 function renderCmdBody() {
   const host = $("cmdBody");
   host.innerHTML = "";
-  const g = gcur();
+  const g = gEff();
   if (!g || !selCmd || !g.commands[selCmd]) {
     host.innerHTML = '<div class="empty">请先创建或选择指令</div>';
     return;
@@ -777,34 +821,54 @@ $("btnRawApply").onclick = async () => {
   await saveNow();
 };
 
-async function doCopy(what) {
+async function copyAllFrom(srcKey) {
   const g = gcur();
-  const srcKey = $("copyFromSelect").value;
-  if (!g || !srcKey || !cfg.groups[srcKey]) return toast("请选择要复制的来源标签页", true);
   const src = cfg.groups[srcKey];
+  if (!g || !src) return toast("请选择要复制的来源标签页", true);
+  if (g.bind) return toast("绑定会话不可编辑，请先解绑", true);
   const name = gkeyInfo(srcKey).name;
-  const scope = what === "all" ? "变量分组、函数模块和指令" : what === "vars" ? "变量分组" : "指令和函数模块";
-  const hasTarget = what === "all"
-    ? (Object.keys(g.groups).length || Object.keys(g.commands).length || Object.keys(g.modules || {}).length)
-    : what === "vars" ? Object.keys(g.groups).length
-      : (Object.keys(g.commands).length || Object.keys(g.modules || {}).length);
-  if (hasTarget && !(await askConfirm(`当前群的${scope}将被「${name}」的覆盖。继续？`))) return;
-  if (what === "vars" || what === "all") g.groups = JSON.parse(JSON.stringify(src.groups || {}));
-  if (what === "cmds" || what === "all") {
-    g.commands = JSON.parse(JSON.stringify(src.commands || {}));
-    g.modules = JSON.parse(JSON.stringify(src.modules || {}));
-  }
+  const hasTarget = Object.keys(g.groups).length || Object.keys(g.commands).length || Object.keys(g.modules).length;
+  if (hasTarget && !(await askConfirm(`当前标签页的变量分组、函数模块和指令将被「${name}」的覆盖。继续？`))) return;
+  g.groups = JSON.parse(JSON.stringify(src.groups || {}));
+  g.modules = JSON.parse(JSON.stringify(src.modules || {}));
+  g.commands = JSON.parse(JSON.stringify(src.commands || {}));
   selAgg = "";
   selCmd = "";
   selMod = "";
   markDirty();
   renderAll();
   await saveNow();
-  toast(`已复制「${name}」的${scope}`);
+  toast(`已复制「${name}」的变量分组、函数模块和指令`);
 }
-$("btnCopyVars").onclick = () => doCopy("vars");
-$("btnCopyCmds").onclick = () => doCopy("cmds");
-$("btnCopyAll").onclick = () => doCopy("all");
+
+$("btnCopyAll").onclick = async () => {
+  const srcKey = $("copyFromSelect").value;
+  if (!srcKey) return toast("请选择要复制的来源标签页", true);
+  await copyAllFrom(srcKey);
+};
+
+$("btnBind").onclick = async () => {
+  const g = gcur();
+  if (!g) return toast("请先进入群标签页", true);
+  if (g.bind) {
+    if (!(await askConfirm("解绑后本标签页恢复可编辑，原有内容保留不变（绑定期未使用）。继续？"))) return;
+    g.bind = "";
+    markDirty();
+    renderAll();
+    await saveNow();
+    return toast("已解绑");
+  }
+  const srcKey = $("copyFromSelect").value;
+  if (!srcKey || !cfg.groups[srcKey]) return toast("请选择要绑定的主会话标签页", true);
+  if (cfg.groups[srcKey].bind) return toast("该标签页自身是绑定会话，不能作为主会话", true);
+  const name = gkeyInfo(srcKey).name;
+  if (!(await askConfirm(`绑定后本标签页变为只读，内容跟随「${name}」变动；原有内容保留，解绑后恢复。继续？`))) return;
+  g.bind = srcKey;
+  markDirty();
+  renderAll();
+  await saveNow();
+  toast(`已绑定到「${name}」`);
+};
 
 window.addEventListener("beforeunload", (e) => {
   if (dirty) {
