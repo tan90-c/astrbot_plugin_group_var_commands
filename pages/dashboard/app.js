@@ -13,7 +13,7 @@ const PARAM_HINT =
   "  alias       命中的别名（用主指令名触发时为空串）\n" +
   "  value       参数列表：普通触发按空格拆分；模板别名如 查{*}玩家，收“查二服玩家 123”→ value=[\"二服\", \"123\"]; 多个 {*} 按顺序各捕获一个元素";
 
-let cfg = { script_timeout: 30, groups: {} };
+let cfg = { script_timeout: 30, reply_format: "markdown", groups: {} };
 let sessions = [];
 let selGroup = "";   // "" = 首页
 let selCmd = "";
@@ -109,7 +109,7 @@ function normGroup(g) {
 
 async function loadCfg() {
   const data = await bridge.apiGet("config");
-  cfg = { script_timeout: data.script_timeout ?? 30, groups: data.groups || {} };
+  cfg = { script_timeout: data.script_timeout ?? 30, reply_format: data.reply_format ?? "markdown", groups: data.groups || {} };
   for (const g of Object.values(cfg.groups)) normGroup(g);
   if (selGroup && !cfg.groups[selGroup]) selGroup = "";
   renderAll();
@@ -385,6 +385,7 @@ function renderViews() {
 
 function renderAll() {
   $("scriptTimeout").value = cfg.script_timeout;
+  $("replyFormat").value = cfg.reply_format || "markdown";
   renderSidebar();
   renderViews();
   if (!selGroup) return;
@@ -519,6 +520,12 @@ function renderRaw() {
 $("searchBox").addEventListener("input", renderSidebar);
 $("btnGoHome").onclick = () => { selGroup = ""; selCmd = ""; selAgg = ""; renderAll(); };
 
+$("replyFormat").addEventListener("change", (e) => {
+  cfg.reply_format = e.target.value;
+  markDirty();
+  renderRaw();
+  saveNow();
+});
 $("scriptTimeout").addEventListener("change", (e) => {
   let v = parseInt(e.target.value || "30", 10);
   if (isNaN(v)) v = 30;

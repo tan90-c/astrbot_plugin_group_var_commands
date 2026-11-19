@@ -99,6 +99,13 @@ textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;f
           <span class="dirty" id="dirtyTip"></span>
           <button class="btn small secondary" id="btnReload">重新加载</button>
         </div>
+        <div class="row">
+          <span class="hint">回复格式</span>
+          <select id="replyFormat" style="min-width:300px">
+            <option value="markdown">markdown（卡片，PC端QQ可能空白）</option>
+            <option value="text">纯文本（强制 msg_type=0，推荐）</option>
+          </select>
+        </div>
       </div>
     </div>
     <div id="groupView" style="display:none">

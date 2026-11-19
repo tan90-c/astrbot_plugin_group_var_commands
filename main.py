@@ -115,7 +115,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.4.0",
+    "2.4.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -415,7 +415,7 @@ class GroupVarCommands(Star):
 
     @staticmethod
     def _sanitize_plain(body: str) -> str:
-        """text 模式：QQ 官方 markdown 卡片在 PC 端会吞掉 ** 之间的内容，转义规避"""
+        """text 模式：转义 ** 避免 PC 端 QQ markdown 卡片吞内容；配合 use_markdown(False) 走纯文本 msg_type=0"""
         return body.replace("**", "*")
 
     @staticmethod
@@ -546,5 +546,13 @@ class GroupVarCommands(Star):
         if not body.strip():
             return
         if str(cfg.get("reply_format", "markdown")).lower() == "text":
-            body = self._sanitize_plain(body)
-        yield event.plain_result(body)
+            res = event.plain_result(self._sanitize_plain(body))
+            # 强制纯文本：qq_official 适配器 use_markdown_ is False 时走 msg_type=0
+            if hasattr(res, "use_markdown"):
+                try:
+                    res.use_markdown(False)
+                except Exception:
+                    pass
+            yield res
+        else:
+            yield event.plain_result(body)
