@@ -399,6 +399,42 @@ $("btnAddGroup").onclick = () => {
   markDirty();
   renderAll();
 };
+$("btnAddGroupCopy").onclick = () => {
+  const gid = $("newGroup").value.trim();
+  if (!gid) return toast("请输入新群号", true);
+  const src = gcur();
+  if (!src) return toast("请先选择要复制的源群", true);
+  const srcId = selGroup;
+  if (gid === selGroup) return toast("新群号与当前群相同", true);
+  if (cfg.groups[gid]) {
+    askConfirm(`群 ${gid} 已存在，其配置将被源群 ${selGroup} 覆盖。继续？`).then((yes) => {
+      if (!yes) return;
+      cfg.groups[gid] = JSON.parse(JSON.stringify({
+        aggregate: true,
+        super_admins: src.super_admins || "",
+        groups: src.groups || {},
+        commands: src.commands || {},
+      }));
+      selGroup = gid;
+      $("newGroup").value = "";
+      markDirty();
+      renderAll();
+      toast(`已覆盖群 ${gid} 配置（复制自 ${srcId}，保存后生效）`);
+    });
+    return;
+  }
+  cfg.groups[gid] = JSON.parse(JSON.stringify({
+    aggregate: true,
+    super_admins: src.super_admins || "",
+    groups: src.groups || {},
+    commands: src.commands || {},
+  }));
+  selGroup = gid;
+  $("newGroup").value = "";
+  markDirty();
+  renderAll();
+  toast(`已添加群 ${gid} 并复制自 ${srcId}（保存后生效）`);
+};
 $("btnDelGroup").onclick = async () => {
   const gid = selGroup;
   if (!gid || !cfg.groups[gid]) return toast("请先选择要删除的群", true);
