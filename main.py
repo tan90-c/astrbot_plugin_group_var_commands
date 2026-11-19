@@ -122,7 +122,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.4.0",
+    "1.4.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -140,7 +140,6 @@ class GroupVarCommands(Star):
         if not isinstance(cfg, dict):
             return {}
         cfg.setdefault("script_timeout", 30)
-        cfg.setdefault("super_admins", "")
         cfg.setdefault("groups", {})
         return cfg
 
@@ -171,7 +170,6 @@ class GroupVarCommands(Star):
         cfg = self._cfg()
         return {
             "script_timeout": cfg.get("script_timeout", 30),
-            "super_admins": cfg.get("super_admins", ""),
             "groups": copy.deepcopy(cfg.get("groups", {})),
         }
 
@@ -185,18 +183,6 @@ class GroupVarCommands(Star):
             raise ValueError("script_timeout 必须是数字")
         if not 1 <= timeout <= 600:
             raise ValueError("script_timeout 需在 1-600 秒之间")
-        # 超级管理员：字符串或列表都接受，统一规范为逗号分隔字符串
-        sa_in = data.get("super_admins", "") or ""
-        if isinstance(sa_in, (list, tuple, set)):
-            sa_items = [str(x).strip() for x in sa_in]
-        elif isinstance(sa_in, str):
-            sa_items = [
-                x.strip()
-                for x in sa_in.replace("，", ",").replace("；", ",").replace(";", ",").split(",")
-            ]
-        else:
-            raise ValueError("super_admins 必须是字符串或列表")
-        super_admins = ",".join(x for x in sa_items if x)
         groups_in = data.get("groups")
         if not isinstance(groups_in, dict):
             raise ValueError("groups 必须是 JSON 对象（群号 -> 配置）")
@@ -216,6 +202,18 @@ class GroupVarCommands(Star):
                 raise ValueError(f"群 {gid} 的聚合分组必须是对象")
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
+            # 群级超级管理员：字符串或列表都接受，统一规范为逗号分隔字符串
+            sa_in = g.get("super_admins", "") or ""
+            if isinstance(sa_in, (list, tuple, set)):
+                sa_items = [str(x).strip() for x in sa_in]
+            elif isinstance(sa_in, str):
+                sa_items = [
+                    x.strip()
+                    for x in sa_in.replace("，", ",").replace("；", ",").replace(";", ",").split(",")
+                ]
+            else:
+                raise ValueError(f"群 {gid} 的 super_admins 必须是字符串或列表")
+            g_super = ",".join(x for x in sa_items if x)
             cmds: dict = {}
             for cname, c in cmds_in.items():
                 cname = str(cname).strip()
@@ -248,6 +246,7 @@ class GroupVarCommands(Star):
                 }
             groups[gid] = {
                 "aggregate": True,
+                "super_admins": g_super,
                 "vars": {str(k): v for k, v in vars_in.items()},
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
@@ -255,7 +254,7 @@ class GroupVarCommands(Star):
                 },
                 "commands": cmds,
             }
-        return {"script_timeout": timeout, "super_admins": super_admins, "groups": groups}
+        return {"script_timeout": timeout, "groups": groups}
 
     async def _save(self) -> bool:
         try:
@@ -281,8 +280,8 @@ class GroupVarCommands(Star):
             return error_response(str(e), status_code=400)
         cfg = self._cfg()
         cfg["script_timeout"] = cleaned["script_timeout"]
-        cfg["super_admins"] = cleaned["super_admins"]
         cfg["groups"] = cleaned["groups"]
+        cfg.pop("super_admins", None)  # 旧的全局字段已废弃，清理掉
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
         return json_response({"saved": True})
@@ -377,8 +376,8 @@ class GroupVarCommands(Star):
 
     # ---------------- 权限校验 ----------------
 
-    def _super_set(self, cfg) -> set:
-        raw = cfg.get("super_admins", "") or ""
+    def _super_set(self, gcfg) -> set:
+        raw = (gcfg or {}).get("super_admins", "") or ""
         if isinstance(raw, (list, tuple, set)):
             items = [str(x) for x in raw]
         else:
@@ -417,15 +416,15 @@ class GroupVarCommands(Star):
             self._role_cache[key] = (role, now)
         return role
 
-    async def _check_perm(self, event, cfg, perm):
-        """返回 (allowed, 拒绝原因或 None)；超级管理员无条件放行"""
+    async def _check_perm(self, event, gcfg, perm):
+        """返回 (allowed, 拒绝原因或 None)；本群超级管理员无条件放行"""
         perm = perm if perm in PERM_LEVELS else "member"
-        if str(event.sender_id) in self._super_set(cfg):
+        if str(event.sender_id) in self._super_set(gcfg):
             return True, None
         if perm == "member":
             return True, None
         if perm == "super":
-            return False, "此指令仅限超级管理员，请把你的 QQ 号加入控制面板【超级管理员QQ】"
+            return False, "此指令仅限本群超级管理员，请把你的 QQ 号加入控制面板【群超级管理员】"
         role = await self._get_role(event)
         if role is None:
             return False, f"无法识别你的群身份，暂不能执行「{PERM_LABELS[perm]}」级指令"
@@ -437,7 +436,7 @@ class GroupVarCommands(Star):
     # ---------------- 指令执行 ----------------
 
     async def _execute(self, event, cfg, gcfg, name, cmd_cfg, args):
-        ok, why = await self._check_perm(event, cfg, cmd_cfg.get("perm", "member"))
+        ok, why = await self._check_perm(event, gcfg, cmd_cfg.get("perm", "member"))
         if not ok:
             yield event.plain_result(f"⛔ {why}")
             return

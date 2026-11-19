@@ -20,7 +20,7 @@ const PARAM_HINT =
   "  vars        群自定义变量字典\n" +
   "  sender_id / sender_name / group_id";
 
-let cfg = { script_timeout: 30, super_admins: "", groups: {} };
+let cfg = { script_timeout: 30, groups: {} };
 let selGroup = "";
 let selCmd = "";
 let selAgg = "";
@@ -68,6 +68,7 @@ function gcur() {
   g.vars = g.vars || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
+  g.super_admins = g.super_admins || "";
   g.aggregate = true;
   return g;
 }
@@ -82,14 +83,15 @@ async function loadCfg() {
   const data = await bridge.apiGet("config");
   cfg = {
     script_timeout: data.script_timeout ?? 30,
-    super_admins: data.super_admins ?? "",
     groups: data.groups || {},
   };
+  delete cfg.super_admins;
   for (const g of Object.values(cfg.groups)) {
     g.vars = g.vars || {};
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
+    g.super_admins = g.super_admins || "";
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
   selCmd = "";
@@ -191,7 +193,9 @@ function addKvRow(host, getDict, setDict, baseKey) {
 
 function renderAll() {
   $("scriptTimeout").value = cfg.script_timeout;
-  $("superAdmins").value = cfg.super_admins || "";
+  const gg = gcur();
+  $("groupSuperAdmins").value = gg ? gg.super_admins : "";
+  $("groupSuperAdmins").disabled = !gg;
   const gs = $("groupSelect");
   gs.innerHTML = "";
   if (!gids().length) gs.appendChild(new Option("（暂无群，请先添加）"));
@@ -365,7 +369,7 @@ $("btnAddGroup").onclick = () => {
   const gid = $("newGroup").value.trim();
   if (!gid) return toast("请输入群号", true);
   cfg.groups = cfg.groups || {};
-  cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, vars: {}, groups: {}, commands: {} };
+  cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, super_admins: "", vars: {}, groups: {}, commands: {} };
   selGroup = gid;
   $("newGroup").value = "";
   markDirty();
@@ -389,8 +393,10 @@ $("scriptTimeout").addEventListener("change", (e) => {
   markDirty();
   renderRaw();
 });
-$("superAdmins").addEventListener("change", (e) => {
-  cfg.super_admins = e.target.value.trim();
+$("groupSuperAdmins").addEventListener("change", (e) => {
+  const g = gcur();
+  if (!g) return;
+  g.super_admins = e.target.value.trim();
   markDirty();
   renderRaw();
 });
@@ -493,7 +499,6 @@ $("btnRawApply").onclick = () => {
     return toast("JSON 必须包含 groups 对象", true);
   cfg = {
     script_timeout: data.script_timeout ?? 30,
-    super_admins: data.super_admins ?? "",
     groups: data.groups,
   };
   for (const g of Object.values(cfg.groups)) {
@@ -501,6 +506,9 @@ $("btnRawApply").onclick = () => {
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
+    g.super_admins = Array.isArray(g.super_admins)
+      ? g.super_admins.join(",")
+      : g.super_admins || "";
     for (const c of Object.values(g.commands)) {
       delete c.inputs;
       if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
