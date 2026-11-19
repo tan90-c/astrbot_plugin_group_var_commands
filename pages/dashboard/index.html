@@ -126,6 +126,18 @@ textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;f
         <div class="row"><button class="btn small" id="btnAddAggKv">+ 添加变量</button></div>
       </div>
       <div class="card">
+        <h2>全局函数模块（modules）</h2>
+        <div class="toolbar">
+          <select id="modSelect" style="min-width:180px"></select>
+          <input id="newMod" placeholder="模块名" style="width:150px" />
+          <button class="btn small" id="btnAddMod">创建模块</button>
+          <button class="btn small danger" id="btnDelMod">删除模块</button>
+        </div>
+        <div class="hint" style="margin:8px 0">模块名须为合法 Python 标识符；指令脚本里直接 import 模块名 或 from 模块名 import 函数 即可使用，无需重复定义</div>
+        <div id="modBody"><div class="empty">请先创建或选择模块</div></div>
+      </div>
+
+      <div class="card">
         <h2>自定义指令</h2>
         <div class="toolbar">
           <select id="cmdSelect" style="min-width:180px"></select>

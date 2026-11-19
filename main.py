@@ -9,6 +9,7 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 
 配置结构（groups 的键 = 会话来源 umo，群聊与私聊均可绑定，面板“绑定会话”自动填写）：
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
+- groups.<会话>.modules   全局函数模块（模块名 -> Python 源码，指令脚本 import 即用）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
 仅支持 QQ 官方机器人平台（qq_official / qq_official_webhook）；不兼容旧版配置字段。
@@ -93,9 +94,10 @@ RESULT_MARK = "###RES###"
 
 # 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
 RUNNER = r"""
-import inspect, json, sys, importlib.util
+import inspect, json, os, sys, importlib.util
 spec = importlib.util.spec_from_file_location("user_script", sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))
 spec.loader.exec_module(mod)
 candidates = json.loads(sys.argv[2])
 try:
@@ -115,7 +117,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.4.1",
+    "2.5.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -204,6 +206,17 @@ class GroupVarCommands(Star):
                 raise ValueError(f"群 {gid} 的聚合分组必须是对象")
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
+            mods_in = g.get("modules", {}) or {}
+            if not isinstance(mods_in, dict):
+                raise ValueError(f"群 {gid} 的 modules 必须是对象（模块名 -> Python 源码）")
+            modules: dict = {}
+            for mname, mcode in mods_in.items():
+                mname = str(mname).strip()
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", mname):
+                    raise ValueError(f"模块名 {mname} 须为合法 Python 标识符（字母/下划线开头）")
+                if not isinstance(mcode, str):
+                    raise ValueError(f"模块 {mname} 的源码必须是字符串")
+                modules[mname] = mcode
             cmds: dict = {}
             for cname, c in cmds_in.items():
                 cname = str(cname).strip()
@@ -238,6 +251,7 @@ class GroupVarCommands(Star):
                 }
             groups[gid] = {
                 "aggregate": True,
+                "modules": modules,
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
                     for k, v in agg_in.items()
@@ -374,9 +388,15 @@ class GroupVarCommands(Star):
 
     # ---------------- 脚本执行 ----------------
 
-    async def _run_script(self, script_text: str, kwargs: dict, timeout: int):
-        """返回 (返回值, 脚本stdout, 错误信息或None)"""
+    async def _run_script(self, script_text: str, kwargs: dict, timeout: int, modules: dict | None = None):
+        """返回 (返回值, 脚本stdout, 错误信息或None)。modules 会写成同目录 .py 供脚本 import。"""
         with tempfile.TemporaryDirectory() as td:
+            for mname, mcode in (modules or {}).items():
+                try:
+                    with open(os.path.join(td, f"{mname}.py"), "w", encoding="utf-8") as f:
+                        f.write(mcode)
+                except Exception:
+                    pass
             path = os.path.join(td, "user_script.py")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(script_text)
@@ -535,7 +555,11 @@ class GroupVarCommands(Star):
             "value": value_list,
         }
         timeout = int(cfg.get("script_timeout", 30) or 30)
-        result, printed, err = await self._run_script(script, kwargs, timeout)
+        modules = {}
+        for mname, mcode in (gcfg.get("modules", {}) or {}).items():
+            if isinstance(mcode, str):
+                modules[str(mname)] = mcode
+        result, printed, err = await self._run_script(script, kwargs, timeout, modules)
         if err:
             # 脚本报错：默认无回复，仅记日志，不影响机器人
             logger.warning(f"[{PLUGIN_ID}] 指令 {name} 执行出错（已静默）: {err[:300]}")

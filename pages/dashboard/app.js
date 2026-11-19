@@ -11,11 +11,13 @@ const PARAM_HINT =
   "  args        自定义变量分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
   "  cmd         主指令名\n" +
   "  alias       命中的别名（用主指令名触发时为空串）\n" +
-  "  value       参数列表：普通触发按空格拆分；模板别名如 查{*}玩家，收“查二服玩家 123”→ value=[\"二服\", \"123\"]; 多个 {*} 按顺序各捕获一个元素";
+  "  value       参数列表：普通触发按空格拆分；模板别名如 查{*}玩家，收“查二服玩家 123”→ value=[\"二服\", \"123\"]; 多个 {*} 按顺序各捕获一个元素\n" +
+  "全局函数模块：脚本顶部 import 模块名 或 from 模块名 import 函数，直接调用";
 
 let cfg = { script_timeout: 30, reply_format: "markdown", groups: {} };
 let sessions = [];
 let selGroup = "";   // "" = 首页
+let selMod = "";
 let selCmd = "";
 let selAgg = "";
 let dirty = false;
@@ -91,12 +93,14 @@ function gcur() {
   if (!selGroup) return null;
   const g = cfg.groups[selGroup];
   if (!g) return null;
+  g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
   return g;
 }
 
 function normGroup(g) {
+  g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
   for (const c of Object.values(g.commands)) {
@@ -369,7 +373,7 @@ function renderSidebar() {
     const g = cfg.groups[key];
     const nCmd = Object.keys((g && g.commands) || {}).length;
     mk("", info.type === "private" ? "💬" : "🤖", info.name, `${nCmd} 条指令 · ${info.sub}`, selGroup === key, () => {
-      selGroup = key; selCmd = ""; selAgg = ""; renderAll();
+      selGroup = key; selCmd = ""; selAgg = ""; selMod = ""; renderAll();
     });
   }
 }
@@ -408,6 +412,16 @@ function renderAll() {
     $("aggTable").innerHTML = '<div class="empty">请先添加分组</div>';
   }
 
+  const ms = $("modSelect");
+  ms.innerHTML = "";
+  const modNames = g ? Object.keys(g.modules) : [];
+  for (const n of modNames) ms.appendChild(new Option(n, n));
+  if (selMod && !modNames.includes(selMod)) selMod = "";
+  if (!selMod) selMod = modNames[0] || "";
+  ms.value = selMod;
+  $("btnDelMod").disabled = !(g && selMod);
+  renderModBody();
+
   const cs = $("cmdSelect");
   cs.innerHTML = "";
   const cmdNames = Object.keys(g.commands);
@@ -433,6 +447,20 @@ function renderCopySelect() {
   }
   for (const k of others) sel.appendChild(new Option(gkeyInfo(k).name, k));
   $("btnCopyVars").disabled = $("btnCopyCmds").disabled = $("btnCopyAll").disabled = false;
+}
+
+function renderModBody() {
+  const host = $("modBody");
+  host.innerHTML = "";
+  const g = gcur();
+  if (!g || !selMod || g.modules[selMod] === undefined) {
+    host.innerHTML = '<div class="empty">请先创建或选择模块</div>';
+    return;
+  }
+  const lab = document.createElement("div");
+  lab.className = "hint";
+  lab.textContent = "模块 " + selMod + ".py（定义若干函数，指令脚本 import 即用）";
+  host.append(lab, buildCodeEditor(() => g.modules[selMod], (v) => { g.modules[selMod] = v; }));
 }
 
 function renderCmdBody() {
@@ -518,7 +546,7 @@ function renderRaw() {
 // ---------- 事件 ----------
 
 $("searchBox").addEventListener("input", renderSidebar);
-$("btnGoHome").onclick = () => { selGroup = ""; selCmd = ""; selAgg = ""; renderAll(); };
+$("btnGoHome").onclick = () => { selGroup = ""; selCmd = ""; selAgg = ""; selMod = ""; renderAll(); };
 
 $("replyFormat").addEventListener("change", (e) => {
   cfg.reply_format = e.target.value;
@@ -571,6 +599,7 @@ $("btnAddFromSession").onclick = async () => {
   selGroup = key;
   selCmd = "";
   selAgg = "";
+  selMod = "";
   renderAll();
 };
 
@@ -582,6 +611,7 @@ $("btnDelGroup").onclick = async () => {
   selGroup = "";
   selCmd = "";
   selAgg = "";
+  selMod = "";
   markDirty();
   renderAll();
   await saveNow();
@@ -638,6 +668,31 @@ $("btnAddAggKv").onclick = () => {
   saveNow(true);
 };
 
+$("modSelect").addEventListener("change", (e) => { selMod = e.target.value; renderModBody(); });
+$("btnAddMod").onclick = async () => {
+  const g = gcur();
+  if (!g) return toast("请先进入群标签页", true);
+  const n = $("newMod").value.trim();
+  if (!n) return toast("请输入模块名", true);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) return toast("模块名须为合法 Python 标识符", true);
+  if (g.modules[n] !== undefined) return toast("模块已存在", true);
+  g.modules[n] = "";
+  selMod = n;
+  $("newMod").value = "";
+  markDirty();
+  renderAll();
+  await saveNow();
+};
+$("btnDelMod").onclick = async () => {
+  const g = gcur();
+  if (!g || !selMod) return toast("请先选择模块", true);
+  if (!(await askConfirm(`确定删除模块「${selMod}」？引用它的指令脚本将报错（静默）。`))) return;
+  delete g.modules[selMod];
+  selMod = "";
+  markDirty();
+  renderAll();
+  await saveNow();
+};
 $("cmdSelect").addEventListener("change", (e) => { selCmd = e.target.value; renderCmdBody(); });
 $("btnAddCmd").onclick = async () => {
   const g = gcur();

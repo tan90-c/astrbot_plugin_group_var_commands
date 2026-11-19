@@ -16,6 +16,7 @@ AstrBot 插件：按群号管理聚合分组变量，自定义指令绑定 Pytho
 
 1. 群与全局：**从会话列表绑定群**（下拉选择机器人已在的群，自动用会话来源 umo 作键，无需手填群号；手动输入仅作为折叠的高级选项）、脚本超时；删除操作均有确认弹窗
 2. 自定义变量分组：添加/改名/删除分组（均有确认弹窗）与每组内变量增删改，变量表支持 ↑↓ 排序
+3. 全局函数模块：一个模块 = 一个 Python 文件，指令脚本 `import 模块名` 即可调用其中函数，无需重复定义（v2.5.0）
 3. 指令配置：创建/删除指令、别名（支持多个 `{*}` 模板）、代码编辑器（高亮+行号+Tab缩进）
 4. 高级 JSON：双向同步，可整段粘贴导入
 5. v2.3.0 新增：私聊会话也可绑定标签页独立配置（💬 图标），触发方式与群聊一致。
@@ -79,12 +80,15 @@ s 1区                ← 别名触发：cmd="状态"，alias="s"，value=["1区
   "groups": {
     "qq_official:QQ:Group:C375264E84931D4134A62B4B7A8C925B": {
       "aggregate": true,
+      "modules": {
+        "utils": "def fmt(ip, port):\n    return f\"{ip}:{port}\"\n"
+      },
       "groups": {
         "Group1": { "ip": "192.168.1.10", "port": "25565", "name": "示例服务器" }
       },
       "commands": {
         "状态": {
-          "script": "def main(args, cmd, value):\n    g = args.get(\"Group1\", {})\n    return f\"{g.get('name')} ({g.get('ip')}:{g.get('port')}) 运行中\"",
+          "script": "from utils import fmt\ndef main(args, cmd, value):\n    g = args.get(\"Group1\", {})\n    return f\"{g.get('name')} ({fmt(g.get('ip',''), g.get('port',''))}) 运行中\"",
           "aliases": ["s", "查询", "查{*}玩家"]
         },
         "重启": {
