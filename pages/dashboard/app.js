@@ -6,6 +6,12 @@ if (!bridge) {
 }
 
 const $ = (id) => document.getElementById(id);
+const PERM_OPTS = [
+  ["member", "群成员（包含管理和群主）"],
+  ["admin", "群管理（包含群主）"],
+  ["owner", "群主"],
+  ["super", "超级管理员（指定QQ）"],
+];
 const PARAM_HINT =
   "默认入参（main 里按名字取用即可，用不到的不写）：\n" +
   "  args        聚合分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
@@ -14,7 +20,7 @@ const PARAM_HINT =
   "  vars        群自定义变量字典\n" +
   "  sender_id / sender_name / group_id";
 
-let cfg = { script_timeout: 30, groups: {} };
+let cfg = { script_timeout: 30, super_admins: "", groups: {} };
 let selGroup = "";
 let selCmd = "";
 let selAgg = "";
@@ -74,7 +80,11 @@ function gids() {
 
 async function loadCfg() {
   const data = await bridge.apiGet("config");
-  cfg = { script_timeout: data.script_timeout ?? 30, groups: data.groups || {} };
+  cfg = {
+    script_timeout: data.script_timeout ?? 30,
+    super_admins: data.super_admins ?? "",
+    groups: data.groups || {},
+  };
   for (const g of Object.values(cfg.groups)) {
     g.vars = g.vars || {};
     g.groups = g.groups || {};
@@ -181,6 +191,7 @@ function addKvRow(host, getDict, setDict, baseKey) {
 
 function renderAll() {
   $("scriptTimeout").value = cfg.script_timeout;
+  $("superAdmins").value = cfg.super_admins || "";
   const gs = $("groupSelect");
   gs.innerHTML = "";
   if (!gids().length) gs.appendChild(new Option("（暂无群，请先添加）"));
@@ -236,6 +247,28 @@ function renderCmdBody() {
   const c = g.commands[selCmd];
   c.script = c.script || "";
   c.outputs = c.outputs || [];
+  if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
+
+  // 执行权限下拉
+  const permRow = document.createElement("div");
+  permRow.className = "row";
+  permRow.style.margin = "0 0 10px";
+  const permLab = document.createElement("span");
+  permLab.className = "hint";
+  permLab.textContent = "执行权限";
+  const permSel = document.createElement("select");
+  for (const [v, t] of PERM_OPTS) permSel.appendChild(new Option(t, v));
+  permSel.value = c.perm;
+  permSel.addEventListener("change", () => {
+    c.perm = permSel.value;
+    markDirty();
+    renderRaw();
+  });
+  const permNote = document.createElement("span");
+  permNote.className = "hint";
+  permNote.textContent = "（超级管理员无条件可用；群管理/群主需 OneBot 适配器支持查询）";
+  permRow.append(permLab, permSel, permNote);
+  host.appendChild(permRow);
 
   const hint = document.createElement("pre");
   hint.className = "hint paramhint";
@@ -356,6 +389,11 @@ $("scriptTimeout").addEventListener("change", (e) => {
   markDirty();
   renderRaw();
 });
+$("superAdmins").addEventListener("change", (e) => {
+  cfg.super_admins = e.target.value.trim();
+  markDirty();
+  renderRaw();
+});
 $("aggSelect").addEventListener("change", (e) => {
   selAgg = e.target.value;
   renderAll();
@@ -418,7 +456,7 @@ $("btnAddCmd").onclick = () => {
   if (!n) return toast("请输入指令名", true);
   if (/\s/.test(n)) return toast("指令名不能含空格", true);
   if (g.commands[n]) return toast("指令已存在", true);
-  g.commands[n] = { script: "", outputs: [] };
+  g.commands[n] = { script: "", outputs: [], perm: "member" };
   selCmd = n;
   $("newCmd").value = "";
   markDirty();
@@ -453,13 +491,20 @@ $("btnRawApply").onclick = () => {
   }
   if (!data || typeof data !== "object" || typeof data.groups !== "object")
     return toast("JSON 必须包含 groups 对象", true);
-  cfg = { script_timeout: data.script_timeout ?? 30, groups: data.groups };
+  cfg = {
+    script_timeout: data.script_timeout ?? 30,
+    super_admins: data.super_admins ?? "",
+    groups: data.groups,
+  };
   for (const g of Object.values(cfg.groups)) {
     g.vars = g.vars || {};
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
-    for (const c of Object.values(g.commands)) delete c.inputs;
+    for (const c of Object.values(g.commands)) {
+      delete c.inputs;
+      if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
+    }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
   markDirty();

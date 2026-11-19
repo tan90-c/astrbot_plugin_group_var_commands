@@ -29,6 +29,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
@@ -85,6 +86,15 @@ def _build_all_message_filter():
     )
 
 _ALL_MESSAGE = _build_all_message_filter()
+# 指令权限级别：下拉框四选项
+PERM_LEVELS = ("member", "admin", "owner", "super")
+PERM_LABELS = {
+    "member": "群成员（包含管理和群主）",
+    "admin": "群管理（包含群主）",
+    "owner": "群主",
+    "super": "超级管理员",
+}
+ROLE_RANK = {"member": 0, "admin": 1, "owner": 2}
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
 
@@ -112,7 +122,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.3.0",
+    "1.4.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -121,6 +131,8 @@ class GroupVarCommands(Star):
         # AstrBot 会按 _conf_schema.json 注入插件配置对象(AstrBotConfig, 继承自 dict)，
         # 保存路径为 data/config/<插件目录名>_config.json
         self.config: dict = config if config is not None else {}
+        # (群号, QQ号) -> (role, 时间戳)，60 秒角色缓存
+        self._role_cache = {}
         self._register_web_apis(context)
 
     def _cfg(self) -> dict:
@@ -128,6 +140,7 @@ class GroupVarCommands(Star):
         if not isinstance(cfg, dict):
             return {}
         cfg.setdefault("script_timeout", 30)
+        cfg.setdefault("super_admins", "")
         cfg.setdefault("groups", {})
         return cfg
 
@@ -158,6 +171,7 @@ class GroupVarCommands(Star):
         cfg = self._cfg()
         return {
             "script_timeout": cfg.get("script_timeout", 30),
+            "super_admins": cfg.get("super_admins", ""),
             "groups": copy.deepcopy(cfg.get("groups", {})),
         }
 
@@ -171,6 +185,18 @@ class GroupVarCommands(Star):
             raise ValueError("script_timeout 必须是数字")
         if not 1 <= timeout <= 600:
             raise ValueError("script_timeout 需在 1-600 秒之间")
+        # 超级管理员：字符串或列表都接受，统一规范为逗号分隔字符串
+        sa_in = data.get("super_admins", "") or ""
+        if isinstance(sa_in, (list, tuple, set)):
+            sa_items = [str(x).strip() for x in sa_in]
+        elif isinstance(sa_in, str):
+            sa_items = [
+                x.strip()
+                for x in sa_in.replace("，", ",").replace("；", ",").replace(";", ",").split(",")
+            ]
+        else:
+            raise ValueError("super_admins 必须是字符串或列表")
+        super_admins = ",".join(x for x in sa_items if x)
         groups_in = data.get("groups")
         if not isinstance(groups_in, dict):
             raise ValueError("groups 必须是 JSON 对象（群号 -> 配置）")
@@ -212,9 +238,13 @@ class GroupVarCommands(Star):
                     if not oname:
                         continue
                     outputs.append({"name": oname, "label": str(item.get("label", "") or oname)})
+                perm = str(c.get("perm", "member") or "member").strip().lower()
+                if perm not in PERM_LEVELS:
+                    raise ValueError(f"指令 {cname} 的 perm 非法：{perm}，须为 member/admin/owner/super")
                 cmds[cname] = {
                     "script": str(c.get("script", "") or ""),
                     "outputs": outputs,
+                    "perm": perm,
                 }
             groups[gid] = {
                 "aggregate": True,
@@ -225,7 +255,7 @@ class GroupVarCommands(Star):
                 },
                 "commands": cmds,
             }
-        return {"script_timeout": timeout, "groups": groups}
+        return {"script_timeout": timeout, "super_admins": super_admins, "groups": groups}
 
     async def _save(self) -> bool:
         try:
@@ -251,6 +281,7 @@ class GroupVarCommands(Star):
             return error_response(str(e), status_code=400)
         cfg = self._cfg()
         cfg["script_timeout"] = cleaned["script_timeout"]
+        cfg["super_admins"] = cleaned["super_admins"]
         cfg["groups"] = cleaned["groups"]
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
@@ -344,9 +375,72 @@ class GroupVarCommands(Star):
                     yield r
                 return
 
+    # ---------------- 权限校验 ----------------
+
+    def _super_set(self, cfg) -> set:
+        raw = cfg.get("super_admins", "") or ""
+        if isinstance(raw, (list, tuple, set)):
+            items = [str(x) for x in raw]
+        else:
+            items = str(raw).replace("，", ",").replace("；", ",").replace(";", ",").split(",")
+        return {x.strip() for x in items if x.strip()}
+
+    async def _get_role(self, event):
+        """尽力获取发送者群角色: member/admin/owner，失败返回 None"""
+        gid, uid = str(event.group_id), str(event.sender_id)
+        key = (gid, uid)
+        now = time.time()
+        hit = self._role_cache.get(key)
+        if hit and now - hit[1] < 60:
+            return hit[0]
+        role = None
+        raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
+        if isinstance(raw, dict):
+            r = raw.get("member_role") or raw.get("role")
+            if isinstance(r, str) and r in ROLE_RANK:
+                role = r
+        if role is None:
+            bot = getattr(event, "bot", None)
+            if bot is not None and hasattr(bot, "call_api"):
+                try:
+                    data = await bot.call_api(
+                        "get_group_member_info",
+                        group_id=gid,
+                        user_id=uid,
+                        no_cache=False,
+                    )
+                    if isinstance(data, dict) and data.get("role") in ROLE_RANK:
+                        role = data["role"]
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_ID}] get_group_member_info 失败: {e}")
+        if role is not None:
+            self._role_cache[key] = (role, now)
+        return role
+
+    async def _check_perm(self, event, cfg, perm):
+        """返回 (allowed, 拒绝原因或 None)；超级管理员无条件放行"""
+        perm = perm if perm in PERM_LEVELS else "member"
+        if str(event.sender_id) in self._super_set(cfg):
+            return True, None
+        if perm == "member":
+            return True, None
+        if perm == "super":
+            return False, "此指令仅限超级管理员，请把你的 QQ 号加入控制面板【超级管理员QQ】"
+        role = await self._get_role(event)
+        if role is None:
+            return False, f"无法识别你的群身份，暂不能执行「{PERM_LABELS[perm]}」级指令"
+        need = 2 if perm == "owner" else 1
+        if ROLE_RANK[role] < need:
+            return False, f"权限不足：此指令需要「{PERM_LABELS[perm]}」"
+        return True, None
+
     # ---------------- 指令执行 ----------------
 
     async def _execute(self, event, cfg, gcfg, name, cmd_cfg, args):
+        ok, why = await self._check_perm(event, cfg, cmd_cfg.get("perm", "member"))
+        if not ok:
+            yield event.plain_result(f"⛔ {why}")
+            return
         script = (cmd_cfg.get("script") or "").strip()
         if not script:
             yield event.plain_result(
