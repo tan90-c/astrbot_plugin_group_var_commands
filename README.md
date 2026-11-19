@@ -96,6 +96,8 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
 
 ## 使用示例
 
+触发形式支持两种：`<指令名> <值>` 与 `/<指令名> <值>`。
+
 以 Hello World 为例：
 
 1. 管理员在群内：`/gvc cmd add 问候`
@@ -106,14 +108,14 @@ def main(name):
     return {"result": "Hello, " + name + "!"}
 ```
 
-3. 绑定入参（这里用固定值演示，也可改用 `var:`/`gvar:`/`arg:` 等来源）：
+3. 绑定入参（`name` 取自消息参数，也可改用 `var:`/`gvar:`/`literal:` 等来源）：
 
 ```
-/gvc cmd bind 问候 name literal:World
+/gvc cmd bind 问候 name arg:1
 /gvc cmd out 问候 result
 ```
 
-4. 群成员发送 `问候` → 机器人回复：
+4. 群成员发送 `问候 World`（或 `/问候 World`）→ 机器人回复：
 
 ```
 result: Hello, World!

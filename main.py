@@ -73,7 +73,7 @@ def _coerce(value, typ):
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行",
-    "1.0.2",
+    "1.0.3",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -268,9 +268,13 @@ class GroupVarCommands(Star):
         cmds = gcfg.get("commands", {})
         if not cmds:
             return
+        # 支持两种触发形式：「<指令名> <value>」与「/<指令名> <value>」
+        body = text
+        if body[:1] in ("/", "／"):
+            body = body[1:].lstrip()
         for name in sorted(cmds.keys(), key=len, reverse=True):
-            if text == name or text.startswith(name + " ") or text.startswith(name + "　"):
-                args = text[len(name):].strip().split()
+            if body == name or body.startswith(name + " ") or body.startswith(name + "　"):
+                args = body[len(name):].strip().split()
                 async for r in self._execute(event, cfg, gcfg, name, cmds[name], args):
                     yield r
                 return
@@ -430,7 +434,7 @@ class GroupVarCommands(Star):
             cmds.setdefault(name, {"script": "", "inputs": [], "outputs": []})
             await self._save()
             return (
-                f"已创建指令「{name}」。群内成员发送「{name}」即触发。\n"
+                f"已创建指令「{name}」。群内成员发送「{name}」或「/{name}」即触发。\n"
                 f"下一步: {p} cmd script {name}"
             )
 
