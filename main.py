@@ -22,7 +22,7 @@ import sys
 import tempfile
 
 from astrbot.api import logger
-from astrbot.api.event import MessageEvent, filter
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 
 PLUGIN_ID = "astrbot_plugin_group_var_commands"
@@ -71,9 +71,9 @@ def _coerce(value, typ):
 
 @register(
     PLUGIN_ID,
-    "群变量指令",
+    "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行",
-    "1.0.0",
+    "1.0.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -123,7 +123,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 变量来源解析 ----------------
 
-    def _resolve(self, source: str, gcfg: dict, args: list, event: MessageEvent):
+    def _resolve(self, source: str, gcfg: dict, args: list, event: AstrMessageEvent):
         """
         来源语法：
           var:<key>            群自定义变量
@@ -226,7 +226,7 @@ class GroupVarCommands(Star):
     # ---------------- 消息入口 ----------------
 
     @filter.event_message()
-    async def on_message(self, event: MessageEvent):
+    async def on_message(self, event: AstrMessageEvent):
         text = (event.get_message_str() or "").strip()
         if not text:
             return
