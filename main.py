@@ -62,6 +62,25 @@ except ImportError:
     request = _ReqProxy()
 
 PLUGIN_ID = "astrbot_plugin_group_var_commands"
+
+def _build_all_message_filter():
+    """兼容不同 AstrBot 版本的全量消息过滤器注册写法。"""
+    if hasattr(filter, "event_message_type"):
+        emt = getattr(filter, "EventMessageType", None)
+        if emt is None:
+            try:
+                from astrbot.api.event import EventMessageType as emt  # noqa: F811
+            except ImportError:
+                emt = None
+        if emt is not None:
+            return filter.event_message_type(emt.ALL)
+    if hasattr(filter, "event_message"):
+        return filter.event_message()
+    raise ImportError(
+        f"[{PLUGIN_ID}] 当前 AstrBot 的 astrbot.api.event.filter 不支持已知事件过滤器，请升级 AstrBot"
+    )
+
+_ALL_MESSAGE = _build_all_message_filter()
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
 # 入参来源合法前缀（服务端校验用）
@@ -121,7 +140,7 @@ def _coerce(value, typ):
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.2.0",
+    "1.2.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -385,7 +404,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 消息入口 ----------------
 
-    @filter.event_message()
+    @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
         if not event.is_group():
             return
