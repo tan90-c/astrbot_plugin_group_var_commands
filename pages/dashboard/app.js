@@ -408,6 +408,7 @@ function renderAll() {
   if (!selAgg) selAgg = aggNames[0] || "";
   as.value = selAgg;
   $("btnRenameAgg").disabled = !selAgg;
+  $("btnCopyAgg").disabled = !selAgg;
   $("btnDelAgg").disabled = !selAgg;
   $("btnAddAggKv").disabled = !selAgg;
 
@@ -646,6 +647,26 @@ $("btnAddAgg").onclick = async () => {
   renderAll();
   await saveNow();
 };
+$("btnCopyAgg").onclick = async () => {
+  const g = gcur();
+  if (!g || !selAgg) return toast("请先选择要复制的分组", true);
+  const src = selAgg;
+  let n = $("newAgg").value.trim();
+  if (!n) {
+    n = src + " 副本";
+    let i = 2;
+    while (g.groups[n] !== undefined) n = src + " 副本" + i++;
+  }
+  if (g.groups[n]) return toast("同名分组已存在", true);
+  g.groups[n] = JSON.parse(JSON.stringify(g.groups[src]));
+  selAgg = n;
+  $("newAgg").value = "";
+  markDirty();
+  renderAll();
+  await saveNow();
+  toast(`已复制分组：${src} → ${n}`);
+};
+
 $("btnRenameAgg").onclick = async () => {
   const g = gcur();
   if (!g || !selAgg) return toast("请先选择分组", true);
