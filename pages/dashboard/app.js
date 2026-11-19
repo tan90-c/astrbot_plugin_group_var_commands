@@ -90,7 +90,10 @@ async function loadCfg() {
     g.commands = g.commands || {};
     g.aggregate = true;
     g.super_admins = g.super_admins || "";
-    for (const c of Object.values(g.commands)) c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
+    for (const c of Object.values(g.commands)) {
+      c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
+      delete c.outputs;
+    }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
   selCmd = "";
@@ -275,8 +278,8 @@ function renderCmdBody() {
   }
   const c = g.commands[selCmd];
   c.script = c.script || "";
-  c.outputs = c.outputs || [];
   c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
+  delete c.outputs;
   if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
 
   // 执行权限下拉
@@ -307,7 +310,7 @@ function renderCmdBody() {
 
   const lab = document.createElement("div");
   lab.className = "hint";
-  lab.textContent = "Python 脚本（def main(...) 返回 dict，形参从默认入参里按名字取）";
+  lab.textContent = "Python 脚本（def main(...)；返回值转字符串直接回复：str原样/dict、list转JSON/None空则不回复；报错超时静默不崩）";
   const ta = document.createElement("textarea");
   ta.className = "script";
   ta.spellcheck = false;
@@ -372,65 +375,6 @@ function renderCmdBody() {
     renderRaw();
   };
   host.append(labAlias, tbAl, btnAddAl);
-
-  // 输出变量表（name/label）
-  const labOut = document.createElement("div");
-  labOut.className = "hint";
-  labOut.style.marginTop = "12px";
-  labOut.textContent = "输出变量（按 main() 返回 dict 的键渲染回复；留空则全部键输出）";
-  const tbOut = document.createElement("table");
-  tbOut.innerHTML = "<tr><th>变量名</th><th>显示名</th><th>操作</th></tr>";
-  const rows = [];
-  c.outputs.forEach((o) => {
-    const tr = document.createElement("tr");
-    const a = document.createElement("td");
-    const b = document.createElement("td");
-    const e = document.createElement("td");
-    const ni = document.createElement("input");
-    ni.value = o.name || "";
-    const li = document.createElement("input");
-    li.value = o.label || "";
-    li.placeholder = "留空用变量名";
-    const del = document.createElement("button");
-    del.className = "btn small danger";
-    del.textContent = "删除";
-    a.appendChild(ni);
-    b.appendChild(li);
-    e.appendChild(del);
-    tr.append(a, b, e);
-    rows.push({ tr, ni, li, del });
-    tbOut.appendChild(tr);
-  });
-  const harvestOut = () => {
-    const out = [];
-    for (const r of rows) {
-      const n = r.ni.value.trim();
-      if (!n) continue;
-      out.push({ name: n, label: r.li.value.trim() || n });
-    }
-    c.outputs = out;
-    markDirty();
-    renderRaw();
-  };
-  tbOut.addEventListener("change", harvestOut);
-  for (const r of rows) {
-    r.del.onclick = () => {
-      r.tr.remove();
-      rows.splice(rows.indexOf(r), 1);
-      harvestOut();
-    };
-  }
-  const btnAddOut = document.createElement("button");
-  btnAddOut.className = "btn small";
-  btnAddOut.style.marginTop = "8px";
-  btnAddOut.textContent = "+ 添加输出";
-  btnAddOut.onclick = () => {
-    c.outputs.push({ name: "result", label: "结果" });
-    markDirty();
-    renderCmdBody();
-    renderRaw();
-  };
-  host.append(labOut, tbOut, btnAddOut);
 }
 
 function renderRaw() {
@@ -537,7 +481,7 @@ $("btnAddCmd").onclick = () => {
   if (!n) return toast("请输入指令名", true);
   if (/\s/.test(n)) return toast("指令名不能含空格", true);
   if (g.commands[n]) return toast("指令已存在", true);
-  g.commands[n] = { script: "", outputs: [], perm: "member", aliases: [] };
+  g.commands[n] = { script: "", perm: "member", aliases: [] };
   selCmd = n;
   $("newCmd").value = "";
   markDirty();
@@ -586,6 +530,7 @@ $("btnRawApply").onclick = () => {
     delete g.vars;
     for (const c of Object.values(g.commands)) {
       delete c.inputs;
+      delete c.outputs;
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
       if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
     }

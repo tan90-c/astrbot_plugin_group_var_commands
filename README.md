@@ -15,7 +15,7 @@ AstrBot 插件：按群号管理聚合分组变量，自定义指令绑定 Pytho
 1. 群与全局：添加/删除群号（删除有确认弹窗）、脚本超时
 2. 群超级管理员：当前群超管 QQ 名单（逗号分隔，仅本群生效）
 3. 自定义变量分组：添加/改名/删除分组（均有确认弹窗）与每组内变量增删改（v1.5.0 起取消旧的 vars 卡片，全部走分组，保存时自动丢弃旧 vars）
-4. 指令配置：创建/删除指令、附属指令名（别名）增删、执行权限下拉、Python 脚本编辑器、输出变量表
+4. 指令配置：创建/删除指令、附属指令名（别名）增删、执行权限下拉、Python 脚本编辑器（v1.6.0 起取消输出变量配置）
 5. 高级 JSON：双向同步，可整段粘贴导入
 
 ## 指令别名（附属指令名，v1.5.0）
@@ -57,7 +57,11 @@ v1.3.0 变化：删除了“入参绑定”——脚本不再需要声明来源�
 | `sender_name` | str | 触发者昵称 |
 | `group_id` | str | 群号 |
 
-脚本需 `return dict`（也可 `return` 其他值，会包装成 `{"result": ...}`；脚本内 `print` 的内容会附带在回复前面）。
+脚本返回值直接作为回复：
+
+1. `str` 原样发送；`dict`/`list` 转 JSON 字符串；`None` 或空字符串 → 不回复。
+2. 脚本内 `print` 的内容会附在返回值前（分隔线隔开），便于调试。
+3. 脚本报错/语法错/超时：默认无回复，仅记后端日志（指令名+错误摘要），机器人不崩溃不受影响。
 
 ## 触发方式
 
@@ -86,14 +90,12 @@ s 1区             ← 别名触发：cmd="状态"，alias="s"，value="1区"
       },
       "commands": {
         "状态": {
-          "script": "def main(args, cmd, value):\n    g = args.get(\"Group1\", {})\n    result = f\"{g.get('name')} ({g.get('ip')}:{g.get('port')}) 运行中\"\n    return {\"result\": result}",
-          "outputs": [{ "name": "result", "label": "结果" }],
+          "script": "def main(args, cmd, value):\n    g = args.get(\"Group1\", {})\n    return f\"{g.get('name')} ({g.get('ip')}:{g.get('port')}) 运行中\"",
           "perm": "member",
           "aliases": ["s", "查询"]
         },
         "重启": {
-          "script": "def main(cmd, value):\n    return {\"result\": \"已下发重启\"}",
-          "outputs": [],
+          "script": "def main(cmd, value):\n    return \"已下发重启\"",
           "perm": "admin",
           "aliases": []
         }
@@ -107,7 +109,7 @@ s 1区             ← 别名触发：cmd="状态"，alias="s"，value="1区"
 
 ```python
 def main(cmd, value):
-    return {"result": "Hello, " + (value or "World") + "!"}
+    return "Hello, " + (value or "World") + "!"
 ```
 
 群成员发 `问候` → `Hello, World!`；发 `问候 AstrBot` → `Hello, AstrBot!`
@@ -115,5 +117,5 @@ def main(cmd, value):
 ## 注意事项
 
 1. 脚本拥有与 AstrBot 进程相同的系统权限，控制面板/配置页仅交给可信管理员。
-2. 旧配置里的 `inputs` 字段已废弃：保存时自动丢弃，不影响加载。
+2. 旧配置里的 `inputs`、`outputs` 字段已废弃：保存时自动丢弃，不影响加载。
 3. 聚合分组 `aggregate` 字段保留仅为兼容，现在恒为启用。

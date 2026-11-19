@@ -8,6 +8,6 @@
     "description": "按群号配置：群号 -> {super_admins, groups, commands}",
     "type": "dict",
     "default": {},
-    "hint": "super_admins=本群超级管理员QQ逗号分隔(不跨群)；groups=自定义变量分组(分组名->键值对)；commands.<指令名> 含 script(形参从 args/cmd/alias/value/sender_id/sender_name/group_id 按名取用,返回 dict)、outputs、perm(member/admin/owner/super)、aliases(附属指令名数组)。建议用 WebUI 控制面板编辑，详见 README。"
+    "hint": "super_admins=本群超级管理员QQ逗号分隔(不跨群)；groups=自定义变量分组(分组名->键值对)；commands.<指令名> 含 script(形参从 args/cmd/alias/value/sender_id/sender_name/group_id 按名取用；返回值转字符串直接回复，报错静默)、perm(member/admin/owner/super)、aliases(附属指令名数组)。建议用 WebUI 控制面板编辑，详见 README。"
   }
 }

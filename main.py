@@ -10,7 +10,7 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 配置结构：
 - groups.<群号>.super_admins 本群超级管理员QQ（逗号分隔，不跨群）
 - groups.<群号>.groups    自定义变量分组（分组名 -> 键值对）
-- groups.<群号>.commands  自定义指令（script + outputs + perm + aliases）
+- groups.<群号>.commands  自定义指令（script + perm + aliases）
 - script_timeout          脚本执行超时秒数
 
 群成员发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
@@ -21,7 +21,8 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
   alias       命中的别名（主名触发时为空串）
   value       指令名后面的参数文本（原始字符串）
   sender_id / sender_name / group_id
-返回 dict 按 outputs 渲染为回复（未配 outputs 则全部键输出）。
+脚本返回值直接转字符串回复（str 原样；dict/list 转 JSON；None/空不回复）；
+脚本报错/超时默认无回复，仅记后端日志，不影响机器人运行。
 """
 
 import asyncio
@@ -124,7 +125,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.5.1",
+    "1.6.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -226,18 +227,9 @@ class GroupVarCommands(Star):
                 if not isinstance(c.get("script", ""), str):
                     raise ValueError(f"指令 {cname} 的 script 必须是字符串")
                 inputs_raw = c.get("inputs", []) or []
-                outputs_raw = c.get("outputs", []) or []
-                if not isinstance(inputs_raw, list) or not isinstance(outputs_raw, list):
-                    raise ValueError(f"指令 {cname} 的 inputs/outputs 必须是数组")
-                # 旧配置的 inputs 绑定已废弃，直接丢弃；取变量由脚本自己操作 args
-                outputs = []
-                for item in outputs_raw:
-                    if not isinstance(item, dict):
-                        continue
-                    oname = str(item.get("name", "")).strip()
-                    if not oname:
-                        continue
-                    outputs.append({"name": oname, "label": str(item.get("label", "") or oname)})
+                if not isinstance(inputs_raw, list):
+                    raise ValueError(f"指令 {cname} 的 inputs 必须是数组")
+                # 旧配置的 inputs/outputs 字段已废弃，保存时自动丢弃
                 perm = str(c.get("perm", "member") or "member").strip().lower()
                 if perm not in PERM_LEVELS:
                     raise ValueError(f"指令 {cname} 的 perm 非法：{perm}，须为 member/admin/owner/super")
@@ -257,7 +249,6 @@ class GroupVarCommands(Star):
                         aliases.append(a)
                 cmds[cname] = {
                     "script": str(c.get("script", "") or ""),
-                    "outputs": outputs,
                     "perm": perm,
                     "aliases": aliases,
                 }
@@ -305,7 +296,7 @@ class GroupVarCommands(Star):
     # ---------------- 脚本执行 ----------------
 
     async def _run_script(self, script_text: str, kwargs: dict, timeout: int):
-        """返回 (结果dict或None, 脚本stdout/错误信息)"""
+        """返回 (返回值, 脚本stdout, 错误信息或None)"""
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "user_script.py")
             with open(path, "w", encoding="utf-8") as f:
@@ -325,7 +316,7 @@ class GroupVarCommands(Star):
                     cwd=td,
                 )
             except Exception as e:
-                return None, f"无法启动 Python 子进程: {e}"
+                return None, "", f"无法启动 Python 子进程: {e}"
             try:
                 out, _ = await asyncio.wait_for(proc.communicate(), timeout)
             except asyncio.TimeoutError:
@@ -333,34 +324,30 @@ class GroupVarCommands(Star):
                     proc.kill()
                 except Exception:
                     pass
-                return None, f"脚本执行超时（>{timeout}s）"
+                return None, "", f"脚本执行超时（>{timeout}s）"
             text = out.decode("utf-8", "replace") if out else ""
         if RESULT_MARK in text:
             printed, res = text.split(RESULT_MARK, 1)
             try:
-                return json.loads(res.strip()), printed.strip()
+                return json.loads(res.strip()), printed.strip(), None
             except Exception:
-                return None, "main() 返回值无法解析为 JSON:\n" + res[:1000]
-        return None, "脚本执行出错（请检查 main 函数与入参）:\n" + text[-1500:]
+                return None, printed.strip(), "main() 返回值无法序列化: " + res[:500]
+        return None, "", "脚本执行出错: " + text[-1500:]
 
     @staticmethod
-    def _format_result(result, outputs) -> str:
-        if not isinstance(result, dict):
-            result = {"result": result}
-        lines = []
-        if outputs:
-            for o in outputs:
-                name = o.get("name")
-                v = result.get(name)
-                if isinstance(v, (dict, list)):
-                    v = json.dumps(v, ensure_ascii=False)
-                lines.append(f"{o.get('label') or name}: {v}")
-        else:
-            for k, v in result.items():
-                if isinstance(v, (dict, list)):
-                    v = json.dumps(v, ensure_ascii=False)
-                lines.append(f"{k}: {v}")
-        return "\n".join(lines) if lines else "(无输出)"
+    def _result_to_text(result) -> str:
+        """脚本返回值直接转字符串：str原样，dict/list转JSON，其他str()"""
+        if result is None:
+            return ""
+        if isinstance(result, str):
+            return result
+        if isinstance(result, (dict, list)):
+            return json.dumps(result, ensure_ascii=False)
+        return str(result)
+
+    @staticmethod
+    def _format_result(result, outputs) -> str:  # 已废弃，保留兼容
+        return GroupVarCommands._result_to_text(result)
 
     # ---------------- 消息入口 ----------------
 
@@ -495,12 +482,14 @@ class GroupVarCommands(Star):
             "group_id": str(event.group_id),
         }
         timeout = int(cfg.get("script_timeout", 30) or 30)
-        result, printed = await self._run_script(script, kwargs, timeout)
-        if result is None:
-            logger.warning(f"[{PLUGIN_ID}] 指令 {name} 执行失败: {printed[:300]}")
-            yield event.plain_result(f"「{name}」执行失败：\n{printed[:800]}")
+        result, printed, err = await self._run_script(script, kwargs, timeout)
+        if err:
+            # 脚本报错：默认无回复，仅记日志，不影响机器人
+            logger.warning(f"[{PLUGIN_ID}] 指令 {name} 执行出错（已静默）: {err[:300]}")
             return
-        body = self._format_result(result, cmd_cfg.get("outputs"))
+        body = self._result_to_text(result)
         if printed:
-            body = printed + "\n──────\n" + body
+            body = (printed + "\n──────\n" + body) if body else printed
+        if not body.strip():
+            return
         yield event.plain_result(body)
