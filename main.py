@@ -125,7 +125,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.6.1",
+    "1.7.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -243,6 +243,13 @@ class GroupVarCommands(Star):
                         continue
                     if re.search(r"\s", a):
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能含空格")
+                    if a.count("{value}") > 1:
+                        raise ValueError(f"指令 {cname} 的别名 {a} 只能含一个占位符")
+                    tmp = a.replace("{value}", "")
+                    if "{" in tmp or "}" in tmp:
+                        raise ValueError(f"指令 {cname} 的别名 {a} 只允许使用 {{value}} 占位符")
+                    if "{value}" in a and not tmp:
+                        raise ValueError(f"指令 {cname} 的别名 {a} 不能只是占位符，需有固定文字")
                     if a == cname:
                         continue
                     if a not in aliases:
@@ -352,19 +359,28 @@ class GroupVarCommands(Star):
     # ---------------- 消息入口 ----------------
 
     def _trigger_index(self, cmds: dict):
-        """构建触发词表：主名优先；别名与其他主名重复→归主名指令；
-        别名之间重复→后创建的指令(插入顺序靠后)赢。"""
+        """构建触发项表：主名优先；别名与其他主名重复→归主名指令；
+        别名之间重复→后创建的指令赢。支持 {value} 模板别名（如 查{value}玩家）。"""
         trigger = {}
         for cname in cmds:
             trigger[cname] = cname
         for cname, c in cmds.items():
             for a in (c or {}).get("aliases", []) or []:
                 a = str(a).strip()
-                if not a or a in cmds:
+                if not a or a in cmds:  # 与主名重复→主名指令赢，跳过
                     continue
-                trigger[a] = cname  # 同别名后创建者覆盖
-        ordered = sorted(trigger.keys(), key=len, reverse=True)
-        return trigger, ordered
+                trigger[a] = cname  # 别名间重复→后创建者覆盖
+        entries = []
+        for tok, canon in trigger.items():
+            if "{value}" in tok:
+                lit = tok.replace("{value}", "\x00")
+                pattern = re.compile("^" + re.escape(lit).replace("\x00", "(.+?)") + "$")
+                entries.append((tok, canon, "tpl", pattern))
+            else:
+                entries.append((tok, canon, "fixed", None))
+        # 字面部分长的优先；同长时非模板优先
+        entries.sort(key=lambda e: (len(e[0].replace("{value}", "")), "{value}" not in e[0]), reverse=True)
+        return entries
 
     @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
@@ -385,14 +401,21 @@ class GroupVarCommands(Star):
         body = text
         if body[:1] in ("/", "／"):
             body = body[1:].lstrip()
-        trigger, ordered = self._trigger_index(cmds)
-        for token in ordered:
-            if body == token or body.startswith(token + " ") or body.startswith(token + "　"):
-                args = body[len(token):].strip().split()
-                canonical = trigger[token]
-                async for r in self._execute(event, cfg, gcfg, canonical, cmds[canonical], args, token):
-                    yield r
-                return
+        trigger_entries = self._trigger_index(cmds)
+        for tok, canon, kind, pat in trigger_entries:
+            if kind == "fixed":
+                if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
+                    args = body[len(tok):].strip().split()
+                    async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], args, tok):
+                        yield r
+                    return
+            else:
+                m = pat.match(body)
+                if m:
+                    val = m.group(1).strip()
+                    async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], val.split(), tok):
+                        yield r
+                    return
 
     # ---------------- 权限校验 ----------------
 
