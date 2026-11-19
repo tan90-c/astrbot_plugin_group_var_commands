@@ -43,6 +43,116 @@ function markDirty() {
   $("dirtyTip").textContent = "● 未保存";
 }
 
+// ---------- Python 代码编辑器（零依赖高亮 overlay） ----------
+
+const PY_KW = new Set(("def class return if elif else for while in not and or import from as try except finally " +
+  "with lambda None True False pass break continue global yield raise assert del is async await").split(/\s+/));
+const PY_DEC = new Set(["def", "class", "import", "from", "return", "lambda", "async"]);
+
+function escHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function pyHighlight(code) {
+  let out = "", i = 0;
+  const n = code.length;
+  const isWord = (c) => c && /[A-Za-z0-9_]/.test(c);
+  while (i < n) {
+    const c = code[i];
+    if (c === "#") {
+      let j = code.indexOf("\n", i);
+      if (j < 0) j = n;
+      out += '<span class="c">' + escHtml(code.slice(i, j)) + "</span>";
+      i = j;
+    } else if (c === '"' || c === "'") {
+      const triple = code.slice(i, i + 3) === c.repeat(3);
+      const q = triple ? c.repeat(3) : c;
+      let j = i + q.length;
+      while (j < n) {
+        if (code[j] === "\\") { j += 2; continue; }
+        if (code.startsWith(q, j)) { j += q.length; break; }
+        if (!triple && code[j] === "\n") break;
+        j++;
+      }
+      out += '<span class="s">' + escHtml(code.slice(i, j)) + "</span>";
+      i = j;
+    } else if (/[A-Za-z_]/.test(c)) {
+      let j = i;
+      while (j < n && /[A-Za-z0-9_]/.test(code[j])) j++;
+      const w = code.slice(i, j);
+      if (PY_KW.has(w)) out += '<span class="' + (PY_DEC.has(w) ? "d" : "k") + '">' + w + "</span>";
+      else out += escHtml(w);
+      i = j;
+    } else if (/[0-9]/.test(c) && !isWord(code[i - 1])) {
+      let j = i;
+      while (j < n && /[0-9a-fA-F.xX]/.test(code[j])) j++;
+      out += '<span class="n">' + code.slice(i, j) + "</span>";
+      i = j;
+    } else {
+      out += escHtml(c);
+      i++;
+    }
+  }
+  return out;
+}
+
+function buildCodeEditor(getValue, setValue) {
+  const box = document.createElement("div");
+  box.className = "codebox";
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  bar.innerHTML = "<span>PYTHON 脚本</span><span>Tab 缩进 · def main(...) 返回即回复</span>";
+  const body = document.createElement("div");
+  body.className = "body";
+  const gutter = document.createElement("pre");
+  gutter.className = "gutter";
+  const wrap = document.createElement("div");
+  wrap.className = "wrap";
+  const hl = document.createElement("pre");
+  hl.className = "hl";
+  const ta = document.createElement("textarea");
+  ta.className = "input";
+  ta.spellcheck = false;
+  ta.value = getValue();
+  wrap.append(hl, ta);
+  body.append(gutter, wrap);
+  box.append(bar, body);
+
+  const syncScroll = () => {
+    hl.scrollTop = ta.scrollTop;
+    hl.scrollLeft = ta.scrollLeft;
+    gutter.scrollTop = ta.scrollTop;
+  };
+  const refresh = () => {
+    const v = ta.value;
+    hl.innerHTML = pyHighlight(v) + "\n";
+    const lines = v.split("\n").length;
+    gutter.textContent = Array.from({ length: lines }, (_, i) => i + 1).join("\n");
+    syncScroll();
+  };
+  ta.addEventListener("input", () => {
+    setValue(ta.value);
+    markDirty();
+    refresh();
+  });
+  ta.addEventListener("scroll", syncScroll);
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      document.execCommand("insertText", false, "    ");
+    } else if (e.key === "Enter") {
+      const pos = ta.selectionStart;
+      const lineStart = ta.value.lastIndexOf("\n", pos - 1) + 1;
+      const indent = (ta.value.slice(lineStart, pos).match(/^\s*/) || [""])[0];
+      const extra = /:\s*$/.test(ta.value.slice(lineStart, pos)) ? "    " : "";
+      e.preventDefault();
+      document.execCommand("insertText", false, "\n" + indent + extra);
+    }
+  });
+  refresh();
+  return box;
+}
+
 // iframe 内 window.confirm 常被禁用，用页面内模态框
 function askConfirm(msg) {
   return new Promise((resolve) => {
@@ -309,19 +419,10 @@ function renderCmdBody() {
   hint.textContent = PARAM_HINT;
   host.appendChild(hint);
 
-  const lab = document.createElement("div");
+    const lab = document.createElement("div");
   lab.className = "hint";
   lab.textContent = "Python 脚本（def main(...)；返回值转字符串直接回复：str原样/dict、list转JSON/None空则不回复；报错超时静默不崩）";
-  const ta = document.createElement("textarea");
-  ta.className = "script";
-  ta.spellcheck = false;
-  ta.value = c.script;
-  ta.addEventListener("input", () => {
-    c.script = ta.value;
-    markDirty();
-    $("dirtyTip").textContent = "● 未保存";
-  });
-  host.append(lab, ta);
+  host.append(lab, buildCodeEditor(() => c.script, (v) => { c.script = v; }));
 
   // 附属指令名（别名）
   const labAlias = document.createElement("div");
