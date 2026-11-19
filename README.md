@@ -2,15 +2,15 @@
 
 AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Python 脚本执行，脚本可引用服务器配置变量。
 
-所有配置都在 WebUI「插件设置」页面完成（JSON 编辑），群内没有任何管理指令；群成员只需直接发送 `<指令名> <值>` 或 `/<指令名> <值>` 即可触发脚本。
+所有配置都在 WebUI 完成：v1.2.0 起插件自带「控制面板」可视化编辑页（基于 AstrBot 插件 Pages 能力，需 AstrBot >= 4.9.2，保存时服务端校验）；旧版 AstrBot 仍可在「插件设置」JSON 中编辑。群内没有任何管理指令，群成员只需直接发送 `<指令名> <值>` 或 `/<指令名> <值>` 即可触发脚本。
 
 ## 安装
 
 1. 将整个 `astrbot_plugin_group_var_commands` 文件夹放入 AstrBot 的 `data/plugins/` 目录（或通过插件仓库地址安装）。
 2. 重启 AstrBot，在 WebUI「插件管理」中确认已加载。
-3. 打开 WebUI「插件设置」中本插件的配置页（对应 `data/config/astrbot_plugin_group_var_commands_config.json`），编辑 `groups` 配置。保存后即时生效，无需重启。
+3. 打开 WebUI 插件详情页 → 「控制面板」页面，可视化管理群、变量、聚合分组与指令；也可在「插件设置」JSON（对应 `data/config/astrbot_plugin_group_var_commands_config.json`）中直接编辑。保存后即时生效，无需重启。
 
-要求 AstrBot >= 3.4.0，Python >= 3.10。脚本在独立 Python 子进程中运行，无需额外依赖。
+要求 AstrBot >= 3.4.0（控制面板需 >= 4.9.2），Python >= 3.10。脚本在独立 Python 子进程中运行，无需额外依赖。
 
 ## 配置结构
 

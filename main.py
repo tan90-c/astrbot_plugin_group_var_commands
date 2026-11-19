@@ -3,17 +3,23 @@ from __future__ import annotations
 """
 AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 
-所有配置均在 WebUI「插件设置」页面（JSON）中完成：
+配置方式（两种，等价）：
+1. WebUI 控制页面（推荐）：插件详情页 → 「群变量指令 · 控制面板」可视化编辑
+2. 直接编辑 data/config/ 下的插件设置 JSON
+
+配置结构：
 - groups.<群号>.vars      群自定义变量（可存服务器配置）
 - groups.<群号>.aggregate 是否开启聚合分组
 - groups.<群号>.groups    聚合分组（分组名 -> 键值对）
 - groups.<群号>.commands  自定义指令（脚本 + 入参绑定 + 输出变量）
+- script_timeout          脚本执行超时秒数
 
-群成员发送「<指令名> <值>」或「/<指令名> <值>」即执行对应 Python 脚本的
+群成员发送「<指令名> <value>」或「/<指令名> <value>」即执行对应 Python 脚本的
 main() 函数，入参从上述变量/分组/消息参数解析，返回 dict 渲染为回复。
 """
 
 import asyncio
+import copy
 import json
 import os
 import re
@@ -23,10 +29,23 @@ import tempfile
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
+from astrbot.api.web import error_response, json_response, request
 
 PLUGIN_ID = "astrbot_plugin_group_var_commands"
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
+# 入参来源合法前缀（服务端校验用）
+SOURCE_PREFIXES = (
+    "var:",
+    "gvar:",
+    "gall:",
+    "arg:",
+    "literal:",
+    "all:vars",
+    "sender_id",
+    "sender_name",
+    "group_id",
+)
 
 # 子进程运行器：加载用户脚本 -> 调用 main(**kwargs) -> 打印 JSON 结果
 RUNNER = r"""
@@ -71,8 +90,8 @@ def _coerce(value, typ):
 @register(
     PLUGIN_ID,
     "tan90-c",
-    "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行",
-    "1.1.1",
+    "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
+    "1.2.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -81,6 +100,7 @@ class GroupVarCommands(Star):
         # AstrBot 会按 _conf_schema.json 注入插件配置对象(AstrBotConfig, 继承自 dict)，
         # 保存路径为 data/config/<插件目录名>_config.json
         self.config: dict = config if config is not None else {}
+        self._register_web_apis(context)
 
     def _cfg(self) -> dict:
         cfg = self.config
@@ -89,6 +109,147 @@ class GroupVarCommands(Star):
         cfg.setdefault("script_timeout", 30)
         cfg.setdefault("groups", {})
         return cfg
+
+    # ---------------- WebUI 控制面板 API ----------------
+
+    def _register_web_apis(self, context: Context):
+        """注册控制面板（views/pages）使用的后端 Web API。"""
+        if not hasattr(context, "register_web_api"):
+            logger.warning(f"[{PLUGIN_ID}] 当前 AstrBot 版本不支持插件 Web API，控制面板不可用")
+            return
+        try:
+            context.register_web_api(
+                f"/{PLUGIN_ID}/config",
+                self.web_get_config,
+                ["GET"],
+                "群变量指令：读取完整配置",
+            )
+            context.register_web_api(
+                f"/{PLUGIN_ID}/config/save",
+                self.web_save_config,
+                ["POST"],
+                "群变量指令：保存完整配置",
+            )
+        except Exception as e:
+            logger.error(f"[{PLUGIN_ID}] 注册 Web API 失败: {e}")
+
+    def _export_config(self) -> dict:
+        cfg = self._cfg()
+        return {
+            "script_timeout": cfg.get("script_timeout", 30),
+            "groups": copy.deepcopy(cfg.get("groups", {})),
+        }
+
+    def _validate_config(self, data: dict) -> dict:
+        """校验并规范化前端提交的完整配置，非法则抛 ValueError。"""
+        if not isinstance(data, dict):
+            raise ValueError("配置必须是 JSON 对象")
+        try:
+            timeout = int(data.get("script_timeout", 30))
+        except (TypeError, ValueError):
+            raise ValueError("script_timeout 必须是数字")
+        if not 1 <= timeout <= 600:
+            raise ValueError("script_timeout 需在 1-600 秒之间")
+        groups_in = data.get("groups")
+        if not isinstance(groups_in, dict):
+            raise ValueError("groups 必须是 JSON 对象（群号 -> 配置）")
+        groups: dict = {}
+        for gid, g in groups_in.items():
+            gid = str(gid).strip()
+            if not gid:
+                raise ValueError("群号不能为空")
+            if not isinstance(g, dict):
+                raise ValueError(f"群 {gid} 的配置必须是对象")
+            vars_in = g.get("vars", {}) or {}
+            agg_in = g.get("groups", {}) or {}
+            cmds_in = g.get("commands", {}) or {}
+            if not isinstance(vars_in, dict):
+                raise ValueError(f"群 {gid} 的 vars 必须是对象")
+            if not isinstance(agg_in, dict):
+                raise ValueError(f"群 {gid} 的聚合分组必须是对象")
+            if not isinstance(cmds_in, dict):
+                raise ValueError(f"群 {gid} 的 commands 必须是对象")
+            cmds: dict = {}
+            for cname, c in cmds_in.items():
+                cname = str(cname).strip()
+                if not cname:
+                    raise ValueError(f"群 {gid} 存在空的指令名")
+                if not isinstance(c, dict):
+                    raise ValueError(f"指令 {cname} 的配置必须是对象")
+                inputs_raw = c.get("inputs", []) or []
+                outputs_raw = c.get("outputs", []) or []
+                if not isinstance(inputs_raw, list) or not isinstance(outputs_raw, list):
+                    raise ValueError(f"指令 {cname} 的 inputs/outputs 必须是数组")
+                inputs = []
+                for i, item in enumerate(inputs_raw):
+                    if not isinstance(item, dict):
+                        raise ValueError(f"指令 {cname} 的第 {i + 1} 个入参必须是对象")
+                    pname = str(item.get("name", "")).strip()
+                    if not pname:
+                        raise ValueError(f"指令 {cname} 的第 {i + 1} 个入参名字为空")
+                    source = str(item.get("source", "")).strip()
+                    if not source.startswith(SOURCE_PREFIXES):
+                        raise ValueError(
+                            f"指令 {cname} 入参 {pname} 来源非法：{source or '(空)'}，"
+                            "须为 var:/gvar:分组.键/gall:分组/arg:n/literal:文本/"
+                            "all:vars/sender_id/sender_name/group_id"
+                        )
+                    typ = str(item.get("type", "string")).lower()
+                    if typ not in ("string", "number", "bool", "json"):
+                        typ = "string"
+                    inputs.append({"name": pname, "source": source, "type": typ})
+                outputs = []
+                for item in outputs_raw:
+                    if not isinstance(item, dict):
+                        continue
+                    oname = str(item.get("name", "")).strip()
+                    if not oname:
+                        continue
+                    outputs.append({"name": oname, "label": str(item.get("label", "") or oname)})
+                cmds[cname] = {
+                    "script": str(c.get("script", "") or ""),
+                    "inputs": inputs,
+                    "outputs": outputs,
+                }
+            groups[gid] = {
+                "aggregate": bool(g.get("aggregate", False)),
+                "vars": {str(k): v for k, v in vars_in.items()},
+                "groups": {
+                    str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
+                    for k, v in agg_in.items()
+                },
+                "commands": cmds,
+            }
+        return {"script_timeout": timeout, "groups": groups}
+
+    async def _save(self) -> bool:
+        try:
+            if hasattr(self.config, "save_config_async"):
+                await self.config.save_config_async()
+            elif hasattr(self.config, "save_config"):
+                self.config.save_config()
+            return True
+        except Exception as e:
+            logger.error(f"[{PLUGIN_ID}] 保存配置失败: {e}")
+            return False
+
+    async def web_get_config(self):
+        return json_response(self._export_config())
+
+    async def web_save_config(self):
+        payload = await request.json(default=None)
+        if not isinstance(payload, dict):
+            return error_response("请求体不是 JSON 对象")
+        try:
+            cleaned = self._validate_config(payload)
+        except ValueError as e:
+            return error_response(str(e), status_code=400)
+        cfg = self._cfg()
+        cfg["script_timeout"] = cleaned["script_timeout"]
+        cfg["groups"] = cleaned["groups"]
+        if not await self._save():
+            return error_response("配置文件写入失败，详见后端日志", status_code=500)
+        return json_response({"saved": True})
 
     # ---------------- 变量来源解析 ----------------
 
@@ -226,7 +387,7 @@ class GroupVarCommands(Star):
         script = (cmd_cfg.get("script") or "").strip()
         if not script:
             yield event.plain_result(
-                f"指令「{name}」尚未配置脚本，请在 WebUI 插件设置页的 groups.{event.group_id}.commands 中补充。"
+                f"指令「{name}」尚未配置脚本，请在 WebUI 插件控制面板或设置页中补充。"
             )
             return
         kwargs = {}

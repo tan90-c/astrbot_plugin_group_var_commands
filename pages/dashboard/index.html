@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>群变量指令控制面板</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--text:#1a1a2e;--muted:#6b7280;--border:#e5e7eb;--primary:#4f6ef2;--primary-dark:#3b57d9;--green:#10b981;--red:#ef4444;--radius:12px;}
+[data-theme="dark"]{--bg:#14151f;--card:#1e1f2c;--text:#e6e6ee;--muted:#9ca3af;--border:#2c2d3d;--primary:#6b86f5;--primary-dark:#5773e8;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6;padding:20px 16px 60px}
+.container{max-width:980px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--primary)}
+textarea.script{width:100%;min-height:220px;font-family:Consolas,Menlo,monospace;font-size:12px;resize:vertical}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+th{color:var(--muted);font-size:12px;font-weight:600}
+td input,td select{width:100%}
+.btn{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer}
+.btn:hover{background:var(--primary-dark)}
+.btn.secondary{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:var(--red)}
+.btn.small{padding:3px 10px;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.hint{font-size:12px;color:var(--muted)}
+.dirty{color:#f59e0b;font-size:12px;font-weight:600}
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;opacity:0;transition:opacity .3s;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw}
+#toast.show{opacity:1}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;font-size:12px}
+.switch{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>群变量指令控制面板</h1>
+  <div class="sub">按群管理变量 / 聚合分组 / 自定义指令脚本，修改后点击「保存配置」写入服务器</div>
+
+  <div class="card">
+    <h2>群与全局</h2>
+    <div class="toolbar">
+      <select id="groupSelect" style="min-width:220px"></select>
+      <input id="newGroup" placeholder="新群号" style="width:150px" />
+      <button class="btn small" id="btnAddGroup">添加群</button>
+      <button class="btn small danger" id="btnDelGroup">删除当前群</button>
+      <span style="flex:1"></span>
+      <span class="dirty" id="dirtyTip"></span>
+      <button class="btn small secondary" id="btnReload">重新加载</button>
+      <button class="btn" id="btnSave">保存配置</button>
+    </div>
+    <div class="row">
+      <span class="hint">脚本执行超时（秒）</span>
+      <input id="scriptTimeout" type="number" min="1" max="600" style="width:100px" />
+      <span class="hint">1-600</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>群自定义变量（vars）</h2>
+    <div id="varsTable"></div>
+    <div class="row"><button class="btn small" id="btnAddVar">+ 添加变量</button></div>
+  </div>
+
+  <div class="card">
+    <h2>聚合分组</h2>
+    <label class="switch"><input type="checkbox" id="aggEnable" /> 本群开启聚合分组</label>
+    <div class="toolbar">
+      <select id="aggSelect" style="min-width:180px"></select>
+      <input id="newAgg" placeholder="新分组名" style="width:150px" />
+      <button class="btn small" id="btnAddAgg">添加分组</button>
+      <button class="btn small danger" id="btnDelAgg">删除分组</button>
+    </div>
+    <div id="aggTable"></div>
+    <div class="row"><button class="btn small" id="btnAddAggKv">+ 添加变量</button></div>
+  </div>
+
+  <div class="card">
+    <h2>自定义指令（commands）</h2>
+    <div class="toolbar">
+      <select id="cmdSelect" style="min-width:180px"></select>
+      <input id="newCmd" placeholder="新指令名" style="width:150px" />
+      <button class="btn small" id="btnAddCmd">创建指令</button>
+      <button class="btn small danger" id="btnDelCmd">删除指令</button>
+    </div>
+    <div class="hint" style="margin:8px 0">群成员发送「指令名 值」或「/指令名 值」触发；脚本需定义 def main(**kwargs) 并返回 dict。</div>
+    <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
+  </div>
+
+  <div class="card">
+    <h2>高级：完整 JSON</h2>
+    <textarea id="rawJson" class="json" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="btn small secondary" id="btnRawRefresh">从当前页面刷新</button>
+      <button class="btn small" id="btnRawApply">应用 JSON 到页面</button>
+      <span class="hint">应用后仍需点击「保存配置」写入服务器</span>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
