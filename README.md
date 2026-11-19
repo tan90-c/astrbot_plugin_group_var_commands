@@ -65,7 +65,7 @@ def main(args, cmd, alias, value):
 ## 配置存储
 
 1. 面板所有修改写入 `data/config/astrbot_plugin_group_var_commands_config.json`，结构为 `script_timeout / reply_format / groups.<会话umo>.{note, bind, modules, groups, commands}`（bind 非空=只读跟随该主会话）
-2. 高级 JSON 区可查看/粘贴导入当前会话完整配置；「复制全部」从其他标签深拷贝变量分组+函数模块+指令；「绑定会话」把当前标签挂到所选主会话（只读跟随），按钮变「解绑会话」
+2. 高级 JSON 区实时展示当前会话完整配置（自动与页面同步），粘贴新 JSON 可一键导入覆盖；「复制全部」从其他标签深拷贝变量分组+函数模块+指令；「绑定会话」把当前标签挂到所选主会话（只读跟随），按钮变「解绑会话」
 3. 机器人见过的会话记录缓存于 `data/plugin_data/astrbot_plugin_group_var_commands/sessions.json`（仅用于面板展示选择）
 
 ## 安全须知

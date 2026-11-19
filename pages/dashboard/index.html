@@ -152,11 +152,10 @@ textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;f
         <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
       </div>
       <div class="card">
-        <h2>高级：完整 JSON（当前群）</h2>
+        <h2>高级：完整 JSON（当前群，自动与页面同步）</h2>
         <textarea id="rawJson" class="json" spellcheck="false"></textarea>
         <div class="row">
-          <button class="btn small secondary" id="btnRawRefresh">从当前页面刷新</button>
-          <button class="btn small" id="btnRawApply">应用并保存</button>
+          <button class="btn small" id="btnRawApply">导入此 JSON 并覆盖当前会话</button>
         </div>
         <div class="row" style="border-top:1px dashed var(--border);padding-top:10px;margin-top:10px">
           <span class="hint">从已有标签复制 / 绑定</span>

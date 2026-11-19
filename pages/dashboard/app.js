@@ -799,10 +799,10 @@ $("btnDelCmd").onclick = async () => {
   await saveNow();
 };
 
-$("btnRawRefresh").onclick = renderRaw;
 $("btnRawApply").onclick = async () => {
   const g = gcur();
   if (!g) return;
+  if (g.bind) return toast("绑定会话不可编辑，请先解绑", true);
   let data;
   try {
     data = JSON.parse($("rawJson").value);
@@ -812,13 +812,16 @@ $("btnRawApply").onclick = async () => {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return toast("必须是 JSON 对象（当前群的配置）", true);
   }
+  if (!(await askConfirm("将用文本框里的 JSON 覆盖当前会话的全部配置（变量分组/函数模块/指令）。继续？"))) return;
   cfg.groups[selGroup] = data;
   normGroup(cfg.groups[selGroup]);
   selAgg = "";
   selCmd = "";
+  selMod = "";
   markDirty();
   renderAll();
   await saveNow();
+  toast("已导入并覆盖当前会话配置");
 };
 
 async function copyAllFrom(srcKey) {
