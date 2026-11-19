@@ -2,20 +2,20 @@
 
 AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Python 脚本执行，脚本可引用服务器配置变量。
 
+所有配置都在 WebUI「插件设置」页面完成（JSON 编辑），群内没有任何管理指令；群成员只需直接发送 `<指令名> <值>` 或 `/<指令名> <值>` 即可触发脚本。
+
 ## 安装
 
 1. 将整个 `astrbot_plugin_group_var_commands` 文件夹放入 AstrBot 的 `data/plugins/` 目录（或通过插件仓库地址安装）。
 2. 重启 AstrBot，在 WebUI「插件管理」中确认已加载。
-3. 首次加载后会生成配置文件 `data/config/astrbot_plugin_group_var_commands_config.json`，可在 WebUI「插件设置」中编辑；也可用聊天管理指令配置（见下）。
+3. 打开 WebUI「插件设置」中本插件的配置页（对应 `data/config/astrbot_plugin_group_var_commands_config.json`），编辑 `groups` 配置。保存后即时生效，无需重启。
 
 要求 AstrBot >= 3.4.0，Python >= 3.10。脚本在独立 Python 子进程中运行，无需额外依赖。
 
-## 配置结构（WebUI 插件设置 JSON）
+## 配置结构
 
 ```json
 {
-  "admins": ["12345678"],
-  "admin_prefix": "/gvc",
   "script_timeout": 30,
   "groups": {
     "1122334455": {
@@ -48,14 +48,17 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
 
 字段说明：
 
-- `admins`：管理员 QQ 号列表（字符串或数字均可）。
-- `admin_prefix`：管理指令前缀，默认 `/gvc`。
 - `script_timeout`：脚本执行超时秒数。
 - `groups.<群号>`：每个群一份配置。
   - `aggregate`：是否开启聚合分组。
   - `vars`：自定义变量（键值对），不开聚合时直接平铺使用。
   - `groups.<分组名>`：聚合分组内的变量（每个分组一组键值对）。
-  - `commands.<指令名>`：`script`（Python 源码，需定义 `main` 并 `return dict`）、`inputs`（入参绑定）、`outputs`（输出变量）。
+  - `commands.<指令名>`：
+    - `script`：Python 源码（JSON 字符串，`\n` 换行），需定义 `def main(...)` 并 `return dict`；
+    - `inputs`：入参绑定，`name` 与 `main()` 形参一一对应；
+    - `outputs`：输出变量列表（省略则输出 `main()` 返回 dict 的全部键）。
+
+提示：脚本源码中的换行在 JSON 里写 `\n`，双引号写 `\"`。可以先在本地编辑器写好，用在线 JSON 转义工具粘贴进来。
 
 ## 变量来源（inputs.source 语法）
 
@@ -71,58 +74,35 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
 
 类型：`string`（默认）、`number`、`bool`、`json`。引用整个分组时用 `json` 或 `string`（自动序列化）。
 
-## 聊天管理指令（管理员）
+## 触发方式
+
+群成员在已配置的群内发送：
 
 ```
-/gvc help                          帮助
-/gvc add <群号>                    添加群配置
-/gvc del <群号>                    删除群配置
-/gvc agg on|off                    当前群开启/关闭聚合分组
-/gvc set <key> <值>                设置自定义变量
-/gvc unset <key>                   删除自定义变量
-/gvc gadd <分组名>                 添加分组（自动开启聚合）
-/gvc gdel <分组名>                 删除分组
-/gvc gset <分组名> <key> <值>      设置分组变量
-/gvc gunset <分组名> <key>         删除分组变量
-/gvc cmd add <指令名>              创建指令（群成员直接发指令名触发）
-/gvc cmd script <指令名>           随后发一条消息，内容即 Python 脚本
-/gvc cmd bind <指令名> <参数名> <来源> [类型]
-/gvc cmd unbind <指令名> <参数名>
-/gvc cmd out <指令名> <变量名> [显示名]
-/gvc cmd outdel <指令名> <变量名>
-/gvc cmd list / cmd show <指令名>
-/gvc show                          查看当前群完整配置
+状态
+/状态
+状态 1区        ← "1区" 作为 arg:1 传给脚本
+/状态 1区
 ```
 
-## 使用示例
+按指令名最长优先匹配；指令名不要包含空格。未配置的群、未配置的指令不会有任何响应。
 
-触发形式支持两种：`<指令名> <值>` 与 `/<指令名> <值>`。
+## Hello World 示例
 
-以 Hello World 为例：
+`groups.<群号>.commands` 里加：
 
-1. 管理员在群内：`/gvc cmd add 问候`
-2. `/gvc cmd script 问候`，然后发送：
-
-```python
-def main(name):
-    return {"result": "Hello, " + name + "!"}
+```json
+"问候": {
+  "script": "def main(name):\n    return {\"result\": \"Hello, \" + name + \"!\"}",
+  "inputs": [{"name": "name", "source": "arg:1", "type": "string"}],
+  "outputs": [{"name": "result"}]
+}
 ```
 
-3. 绑定入参（`name` 取自消息参数，也可改用 `var:`/`gvar:`/`literal:` 等来源）：
-
-```
-/gvc cmd bind 问候 name arg:1
-/gvc cmd out 问候 result
-```
-
-4. 群成员发送 `问候 World`（或 `/问候 World`）→ 机器人回复：
-
-```
-result: Hello, World!
-```
+群成员发送 `问候 World` 或 `/问候 World` → 回复 `result: Hello, World!`
 
 ## 注意事项
 
-- 脚本拥有与 AstrBot 进程相同的系统权限，只将 `cmd script` 权限授予可信管理员。
-- 指令按名称最长优先匹配；指令名不要包含空格。
-- 修改 `admins` 需先在 WebUI 插件设置中手动添加第一位管理员。
+- 脚本拥有与 AstrBot 进程相同的系统权限，配置页面仅交给可信管理员访问。
+- WebUI 中编辑 JSON 时若群号被自动识别为数字，请以字符串为键（JSON 键天然是字符串，无影响）。
+- 指令执行出错时，机器人会回复截断后的报错信息（含 traceback），便于在配置页直接修脚本。
