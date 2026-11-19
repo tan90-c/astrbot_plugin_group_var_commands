@@ -9,20 +9,24 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 
 配置结构：
 - groups.<群号>.vars      群自定义变量（可存服务器配置）
-- groups.<群号>.aggregate 是否开启聚合分组
-- groups.<群号>.groups    聚合分组（分组名 -> 键值对）
-- groups.<群号>.commands  自定义指令（脚本 + 入参绑定 + 输出变量）
+- groups.<群号>.groups    聚合分组（分组名 -> 键值对），默认形式，可多组
+- groups.<群号>.commands  自定义指令（脚本 + 输出变量）
 - script_timeout          脚本执行超时秒数
 
 群成员发送「<指令名> <value>」或「/<指令名> <value>」即执行对应 Python 脚本的
-main() 函数，入参从上述变量/分组/消息参数解析，返回 dict 渲染为回复。
+main() 函数。默认入参（main 按名取用，RUNNER 自动过滤）：
+  args        聚合分组字典：{分组名: {变量名: 值}}
+  cmd         触发的指令名
+  value       指令名后面的参数文本（原始字符串）
+  vars        群自定义变量字典
+  sender_id / sender_name / group_id
+返回 dict 按 outputs 渲染为回复（未配 outputs 则全部键输出）。
 """
 
 import asyncio
 import copy
 import json
 import os
-import re
 import sys
 import tempfile
 
@@ -83,64 +87,32 @@ def _build_all_message_filter():
 _ALL_MESSAGE = _build_all_message_filter()
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
-# 入参来源合法前缀（服务端校验用）
-SOURCE_PREFIXES = (
-    "var:",
-    "gvar:",
-    "gall:",
-    "arg:",
-    "literal:",
-    "all:vars",
-    "sender_id",
-    "sender_name",
-    "group_id",
-)
 
-# 子进程运行器：加载用户脚本 -> 调用 main(**kwargs) -> 打印 JSON 结果
+# 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
 RUNNER = r"""
-import json, sys, importlib.util
+import inspect, json, sys, importlib.util
 spec = importlib.util.spec_from_file_location("user_script", sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-kwargs = json.loads(sys.argv[2])
+candidates = json.loads(sys.argv[2])
+try:
+    params = inspect.signature(mod.main).parameters
+except (ValueError, TypeError):
+    params = {}
+if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+    kwargs = candidates
+else:
+    kwargs = {k: v for k, v in candidates.items() if k in params}
 ret = mod.main(**kwargs)
 sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=str))
 """
-
-
-def _coerce(value, typ):
-    """按声明类型转换变量值"""
-    typ = (typ or "string").lower()
-    if typ == "number":
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return value
-        try:
-            s = str(value).strip()
-            return int(s) if re.fullmatch(r"[-+]?\d+", s) else float(s)
-        except Exception:
-            return 0
-    if typ == "bool":
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on", "是")
-    if typ == "json":
-        if isinstance(value, (dict, list)):
-            return value
-        try:
-            return json.loads(str(value))
-        except Exception:
-            return {}
-    # string / 默认
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, ensure_ascii=False)
-    return "" if value is None else str(value)
 
 
 @register(
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.2.1",
+    "1.3.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -225,28 +197,13 @@ class GroupVarCommands(Star):
                     raise ValueError(f"群 {gid} 存在空的指令名")
                 if not isinstance(c, dict):
                     raise ValueError(f"指令 {cname} 的配置必须是对象")
+                if not isinstance(c.get("script", ""), str):
+                    raise ValueError(f"指令 {cname} 的 script 必须是字符串")
                 inputs_raw = c.get("inputs", []) or []
                 outputs_raw = c.get("outputs", []) or []
                 if not isinstance(inputs_raw, list) or not isinstance(outputs_raw, list):
                     raise ValueError(f"指令 {cname} 的 inputs/outputs 必须是数组")
-                inputs = []
-                for i, item in enumerate(inputs_raw):
-                    if not isinstance(item, dict):
-                        raise ValueError(f"指令 {cname} 的第 {i + 1} 个入参必须是对象")
-                    pname = str(item.get("name", "")).strip()
-                    if not pname:
-                        raise ValueError(f"指令 {cname} 的第 {i + 1} 个入参名字为空")
-                    source = str(item.get("source", "")).strip()
-                    if not source.startswith(SOURCE_PREFIXES):
-                        raise ValueError(
-                            f"指令 {cname} 入参 {pname} 来源非法：{source or '(空)'}，"
-                            "须为 var:/gvar:分组.键/gall:分组/arg:n/literal:文本/"
-                            "all:vars/sender_id/sender_name/group_id"
-                        )
-                    typ = str(item.get("type", "string")).lower()
-                    if typ not in ("string", "number", "bool", "json"):
-                        typ = "string"
-                    inputs.append({"name": pname, "source": source, "type": typ})
+                # 旧配置的 inputs 绑定已废弃，直接丢弃；取变量由脚本自己操作 args
                 outputs = []
                 for item in outputs_raw:
                     if not isinstance(item, dict):
@@ -257,11 +214,10 @@ class GroupVarCommands(Star):
                     outputs.append({"name": oname, "label": str(item.get("label", "") or oname)})
                 cmds[cname] = {
                     "script": str(c.get("script", "") or ""),
-                    "inputs": inputs,
                     "outputs": outputs,
                 }
             groups[gid] = {
-                "aggregate": bool(g.get("aggregate", False)),
+                "aggregate": True,
                 "vars": {str(k): v for k, v in vars_in.items()},
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
@@ -299,48 +255,6 @@ class GroupVarCommands(Star):
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
         return json_response({"saved": True})
-
-    # ---------------- 变量来源解析 ----------------
-
-    def _resolve(self, source: str, gcfg: dict, args: list, event: AstrMessageEvent):
-        """
-        来源语法：
-          var:<key>            群自定义变量
-          all:vars             全部自定义变量(dict)
-          gvar:<分组名>.<key>  聚合分组内单个变量
-          gall:<分组名>        整个聚合分组(dict)
-          arg:<n>              用户消息第 n 个参数(从1开始)
-          sender_id / sender_name / group_id
-          literal:<文本>
-        """
-        source = source or ""
-        if source.startswith("arg:"):
-            try:
-                idx = int(source[4:]) - 1
-            except ValueError:
-                return ""
-            return args[idx] if 0 <= idx < len(args) else ""
-        if source.startswith("var:"):
-            return gcfg.get("vars", {}).get(source[4:], "")
-        if source == "all:vars":
-            return dict(gcfg.get("vars", {}))
-        if source.startswith("gvar:"):
-            gname, _, key = source[5:].partition(".")
-            return gcfg.get("groups", {}).get(gname, {}).get(key, "")
-        if source.startswith("gall:"):
-            return dict(gcfg.get("groups", {}).get(source[5:], {}))
-        if source == "sender_id":
-            return str(event.sender_id)
-        if source == "sender_name":
-            try:
-                return event.get_sender_name()
-            except Exception:
-                return str(event.sender_id)
-        if source == "group_id":
-            return str(event.group_id)
-        if source.startswith("literal:"):
-            return source[8:]
-        return ""
 
     # ---------------- 脚本执行 ----------------
 
@@ -439,10 +353,20 @@ class GroupVarCommands(Star):
                 f"指令「{name}」尚未配置脚本，请在 WebUI 插件控制面板或设置页中补充。"
             )
             return
-        kwargs = {}
-        for inp in cmd_cfg.get("inputs", []) or []:
-            raw = self._resolve(inp.get("source", ""), gcfg, args, event)
-            kwargs[inp.get("name")] = _coerce(raw, inp.get("type", "string"))
+        try:
+            sender_name = event.get_sender_name()
+        except Exception:
+            sender_name = str(event.sender_id)
+        # 默认入参：RUNNER 会按脚本 main() 实际声明的形参自动筛选
+        kwargs = {
+            "args": copy.deepcopy(gcfg.get("groups", {}) or {}),
+            "cmd": name,
+            "value": " ".join(args),
+            "vars": copy.deepcopy(gcfg.get("vars", {}) or {}),
+            "sender_id": str(event.sender_id),
+            "sender_name": str(sender_name),
+            "group_id": str(event.group_id),
+        }
         timeout = int(cfg.get("script_timeout", 30) or 30)
         result, printed = await self._run_script(script, kwargs, timeout)
         if result is None:

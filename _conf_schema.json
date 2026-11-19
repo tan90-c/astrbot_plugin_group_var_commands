@@ -5,9 +5,9 @@
     "default": 30
   },
   "groups": {
-    "description": "按群号配置：群号 -> {aggregate, vars, groups, commands}",
+    "description": "按群号配置：群号 -> {vars, groups, commands}",
     "type": "dict",
     "default": {},
-    "hint": "vars=自定义变量(键值对)；aggregate=true 时启用 groups 聚合分组(分组名->键值对)；commands.<指令名> 含 script(Python源码,定义main返回dict)、inputs(来源: var:key/all:vars/gvar:分组.key/gall:分组/arg:n/sender_id/sender_name/group_id/literal:文本)、outputs。完整示例见插件仓库 README。"
+    "hint": "vars=群自定义变量(键值对)；groups=聚合分组(分组名->键值对)；commands.<指令名> 含 script(Python源码,main 形参从默认入参 args/cmd/value/vars/sender_id/sender_name/group_id 按名取用,返回 dict)与 outputs(输出变量列表)。建议通过 WebUI 控制面板编辑，结构详见 README。"
   }
 }

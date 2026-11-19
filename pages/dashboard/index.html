@@ -35,6 +35,10 @@ td input,td select{width:100%}
 .empty{color:var(--muted);font-size:13px;padding:8px 0}
 textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;font-size:12px}
 .switch{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px}
+.paramhint{white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+#modalMask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:center;justify-content:center}
+#modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;max-width:420px;width:88vw;box-shadow:0 12px 32px rgba(0,0,0,.3)}
+#modalMsg{font-size:14px;margin-bottom:16px;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -69,11 +73,12 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
 
   <div class="card">
     <h2>聚合分组</h2>
-    <label class="switch"><input type="checkbox" id="aggEnable" /> 本群开启聚合分组</label>
     <div class="toolbar">
       <select id="aggSelect" style="min-width:180px"></select>
       <input id="newAgg" placeholder="新分组名" style="width:150px" />
       <button class="btn small" id="btnAddAgg">添加分组</button>
+      <input id="renameAgg" placeholder="改名为此名称" style="width:150px" />
+      <button class="btn small secondary" id="btnRenameAgg">分组改名</button>
       <button class="btn small danger" id="btnDelAgg">删除分组</button>
     </div>
     <div id="aggTable"></div>
@@ -88,7 +93,7 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
       <button class="btn small" id="btnAddCmd">创建指令</button>
       <button class="btn small danger" id="btnDelCmd">删除指令</button>
     </div>
-    <div class="hint" style="margin:8px 0">群成员发送「指令名 值」或「/指令名 值」触发；脚本需定义 def main(**kwargs) 并返回 dict。</div>
+    <div class="hint" style="margin:8px 0">群成员发送「指令名 值」或「/指令名 值」触发；脚本定义 def main(...)，形参从默认入参（args/cmd/value/vars/…）按名取用，返回 dict。</div>
     <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
   </div>
 
@@ -103,6 +108,7 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
   </div>
 </div>
 <div id="toast"></div>
+<div id="modalMask"><div id="modal"><div id="modalMsg"></div><div class="row" style="justify-content:flex-end"><button class="btn small secondary" id="modalNo">取消</button><button class="btn small" id="modalYes">确定</button></div></div></div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
