@@ -4,6 +4,4 @@ desc: 按群号配置变量与聚合分组，自定义指令绑定 Python 脚本
 author: tan90-c
 version: 1.2.0
 repo: https://github.com/tan90-c/astrbot_plugin_group_var_commands
-requires:
-  astrbot: ">=3.4.0"
-  python: ">=3.10"
+astrbot_version: ">=4.9.2"

@@ -29,7 +29,37 @@ import tempfile
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from astrbot.api.web import error_response, json_response, request
+
+try:
+    from astrbot.api.web import error_response, json_response, request
+except ImportError:
+    # 部分版本无 astrbot.api.web，基于 Quart 提供等价能力（同 mimo_tts 做法）
+    from quart import Response as _QuartResponse
+    from quart import request as _quart_request
+
+    def json_response(data, status=200, **kwargs):
+        return _QuartResponse(
+            json.dumps(data, ensure_ascii=False, default=str),
+            status=status,
+            mimetype="application/json",
+        )
+
+    def error_response(message, status_code=400, **kwargs):
+        return json_response({"ok": False, "message": message}, status=status_code)
+
+    class _ReqProxy:
+        @property
+        def method(self):
+            return _quart_request.method
+
+        async def json(self, default=None):
+            try:
+                data = await _quart_request.get_json(silent=True)
+            except Exception:
+                data = None
+            return default if data is None else data
+
+    request = _ReqProxy()
 
 PLUGIN_ID = "astrbot_plugin_group_var_commands"
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
@@ -355,7 +385,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 消息入口 ----------------
 
-    @filter.event_message_type(filter.EventMessageType.ALL)
+    @filter.event_message()
     async def on_message(self, event: AstrMessageEvent):
         if not event.is_group():
             return
