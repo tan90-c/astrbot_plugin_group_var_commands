@@ -2,9 +2,13 @@ name: astrbot_plugin_group_var_commands
 display_name: 群变量指令
 desc: 按会话绑定群配置变量分组，自定义指令绑定 Python 脚本执行，带 WebUI 可视化控制面板
 author: tan90-c
-version: 1.9.0
+version: 1.9.1
 repo: https://github.com/tan90-c/astrbot_plugin_group_var_commands
 astrbot_version: ">=4.9.2"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook
 
 
 
