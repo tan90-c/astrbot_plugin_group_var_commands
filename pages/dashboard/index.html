@@ -60,29 +60,32 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
     <h2>群与全局</h2>
     <div class="toolbar">
       <select id="groupSelect" style="min-width:220px"></select>
-      <input id="newGroup" placeholder="新群号" style="width:150px" />
-      <button class="btn small" id="btnAddGroup">添加群</button>
-      <button class="btn small secondary" id="btnAddGroupCopy" title="新建群号并复制当前选中群的分分组/指令/超管配置">添加并复制当前配置</button>
-      <button class="btn small danger" id="btnDelGroup">删除当前群</button>
       <span style="flex:1"></span>
       <span class="dirty" id="dirtyTip"></span>
       <button class="btn small secondary" id="btnReload">重新加载</button>
       <button class="btn" id="btnSave">保存配置</button>
     </div>
     <div class="row">
+      <span class="hint">群会话</span>
+      <select id="sessionSelect" style="flex:1;min-width:260px"></select>
+      <button class="btn small" id="btnAddFromSession">添加并绑定会话</button>
+      <button class="btn small secondary" id="btnRefreshSessions">刷新会话列表</button>
+    </div>
+    <div class="hint">机器人所在群发过一条消息后会出现在列表里，直接绑定会话来源，无需手动填群号</div>
+    <div class="row">
       <span class="hint">脚本执行超时（秒）</span>
       <input id="scriptTimeout" type="number" min="1" max="600" style="width:100px" />
       <span class="hint">1-600</span>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>群超级管理员（当前群）</h2>
-    <div class="row">
-      <span class="hint">QQ 号，逗号分隔</span>
-      <input id="groupSuperAdmins" style="flex:1;min-width:220px" placeholder="12345678,87654321" />
-      <span class="hint">名单内成员无条件执行本群所有权限档指令</span>
-    </div>
+    <details>
+      <summary class="hint">高级：手动输入群号/会话来源(umo)</summary>
+      <div class="row">
+        <input id="newGroup" placeholder="群号或 umo，如 aiocqhttp:Group_Message:123456" style="width:320px" />
+        <button class="btn small" id="btnAddGroup">添加群</button>
+        <button class="btn small secondary" id="btnAddGroupCopy" title="新建并复制当前选中群的分组/指令配置">添加并复制当前配置</button>
+        <button class="btn small danger" id="btnDelGroup">删除当前群</button>
+      </div>
+    </details>
   </div>
 
   <div class="card">

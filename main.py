@@ -7,11 +7,11 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 1. WebUI 控制页面（推荐）：插件详情页 → 「群变量指令 · 控制面板」可视化编辑
 2. 直接编辑 data/config/ 下的插件设置 JSON
 
-配置结构：
-- groups.<群号>.super_admins 本群超级管理员QQ（逗号分隔，不跨群）
-- groups.<群号>.groups    自定义变量分组（分组名 -> 键值对）
-- groups.<群号>.commands  自定义指令（script + perm + aliases）
+配置结构（groups 的键 = 会话来源 umo（推荐，面板“绑定会话”自动填）或群号/openid（兼容））：
+- groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
+- groups.<会话>.commands  自定义指令（script + perm + aliases）
 - script_timeout          脚本执行超时秒数
+权限仅三档（member/admin/owner，v1.9.0 取消超级管理员/QQ号白名单）。
 
 群成员发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
 脚本的 main() 函数。触发优先级：主指令名 > 别名；别名同主名重复→调主名指令；
@@ -89,13 +89,12 @@ def _build_all_message_filter():
     )
 
 _ALL_MESSAGE = _build_all_message_filter()
-# 指令权限级别：下拉框四选项
-PERM_LEVELS = ("member", "admin", "owner", "super")
+# 指令权限级别：下拉框三选项（v1.9.0 起取消超级管理员档）
+PERM_LEVELS = ("member", "admin", "owner")
 PERM_LABELS = {
     "member": "群成员（包含管理和群主）",
     "admin": "群管理（包含群主）",
     "owner": "群主",
-    "super": "超级管理员",
 }
 ROLE_RANK = {"member": 0, "admin": 1, "owner": 2}
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
@@ -125,7 +124,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.8.2",
+    "1.9.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -134,8 +133,11 @@ class GroupVarCommands(Star):
         # AstrBot 会按 _conf_schema.json 注入插件配置对象(AstrBotConfig, 继承自 dict)，
         # 保存路径为 data/config/<插件目录名>_config.json
         self.config: dict = config if config is not None else {}
-        # (群号, QQ号) -> (role, 时间戳)，60 秒角色缓存
+        # (群号, 用户id) -> (role, 时间戳)，60 秒角色缓存
         self._role_cache = {}
+        # 已见过的群会话（供面板“绑定会话”选择）
+        self._sessions_file = self._sessions_path()
+        self._sessions = self._load_sessions()
         self._register_web_apis(context)
 
     def _cfg(self) -> dict:
@@ -165,6 +167,12 @@ class GroupVarCommands(Star):
                 self.web_save_config,
                 ["POST"],
                 "群变量指令：保存完整配置",
+            )
+            context.register_web_api(
+                f"/{PLUGIN_ID}/sessions",
+                self.web_get_sessions,
+                ["GET"],
+                "群变量指令：可选群会话列表",
             )
         except Exception as e:
             logger.error(f"[{PLUGIN_ID}] 注册 Web API 失败: {e}")
@@ -205,18 +213,7 @@ class GroupVarCommands(Star):
                 raise ValueError(f"群 {gid} 的聚合分组必须是对象")
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
-            # 群级超级管理员：字符串或列表都接受，统一规范为逗号分隔字符串
-            sa_in = g.get("super_admins", "") or ""
-            if isinstance(sa_in, (list, tuple, set)):
-                sa_items = [str(x).strip() for x in sa_in]
-            elif isinstance(sa_in, str):
-                sa_items = [
-                    x.strip()
-                    for x in sa_in.replace("，", ",").replace("；", ",").replace(";", ",").split(",")
-                ]
-            else:
-                raise ValueError(f"群 {gid} 的 super_admins 必须是字符串或列表")
-            g_super = ",".join(x for x in sa_items if x)
+            # v1.9.0 取消 super_admins：提交则直接丢弃
             cmds: dict = {}
             for cname, c in cmds_in.items():
                 cname = str(cname).strip()
@@ -231,8 +228,10 @@ class GroupVarCommands(Star):
                     raise ValueError(f"指令 {cname} 的 inputs 必须是数组")
                 # 旧配置的 inputs/outputs 字段已废弃，保存时自动丢弃
                 perm = str(c.get("perm", "member") or "member").strip().lower()
+                if perm == "super":  # 旧超管档自动降级为群主档
+                    perm = "owner"
                 if perm not in PERM_LEVELS:
-                    raise ValueError(f"指令 {cname} 的 perm 非法：{perm}，须为 member/admin/owner/super")
+                    raise ValueError(f"指令 {cname} 的 perm 非法：{perm}，须为 member/admin/owner")
                 aliases_in = c.get("aliases", []) or []
                 if not isinstance(aliases_in, list):
                     raise ValueError(f"指令 {cname} 的 aliases 必须是数组")
@@ -259,7 +258,6 @@ class GroupVarCommands(Star):
                 }
             groups[gid] = {
                 "aggregate": True,
-                "super_admins": g_super,
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
                     for k, v in agg_in.items()
@@ -297,6 +295,76 @@ class GroupVarCommands(Star):
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
         return json_response({"saved": True})
+
+    async def web_get_sessions(self):
+        items = sorted(self._sessions.values(), key=lambda x: x.get("last_seen", 0), reverse=True)
+        return json_response({"sessions": items})
+
+    # ---------------- 已见群会话记录 ----------------
+
+    def _sessions_path(self) -> str:
+        base = ""
+        try:
+            from astrbot.api.util import get_astrbot_plugin_data_path
+            base = str(get_astrbot_plugin_data_path())
+        except Exception:
+            try:
+                from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path as g2
+                base = str(g2())
+            except Exception:
+                base = os.path.dirname(os.path.abspath(__file__))
+        d = os.path.join(base, PLUGIN_ID)
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception:
+            d = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(d, "sessions.json")
+
+    def _load_sessions(self) -> dict:
+        try:
+            with open(self._sessions_file, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_sessions(self):
+        try:
+            with open(self._sessions_file, "w", encoding="utf-8") as f:
+                json.dump(self._sessions, f, ensure_ascii=False, indent=1)
+        except Exception as e:
+            logger.warning(f"[{PLUGIN_ID}] 会话缓存保存失败: {e}")
+
+    async def _record_session(self, event, gid: str):
+        now = time.time()
+        old = self._sessions.get(gid)
+        if old and old.get("group_name") and now - float(old.get("last_seen", 0)) < 3600:
+            return
+        try:
+            platform = ""
+            try:
+                platform = event.get_platform_name() or ""
+            except Exception:
+                pass
+            name = ""
+            try:
+                grp = await event.get_group()
+                if grp is not None:
+                    name = str(getattr(grp, "group_name", "") or getattr(grp, "name", "") or "")
+            except Exception:
+                pass
+            entry = {
+                "umo": str(getattr(event, "unified_msg_origin", "") or ""),
+                "group_id": gid,
+                "group_name": name or (old or {}).get("group_name") or gid,
+                "platform": platform or (old or {}).get("platform", ""),
+                "last_seen": int(now),
+            }
+            if entry != old:
+                self._sessions[gid] = entry
+                self._save_sessions()
+        except Exception as e:
+            logger.debug(f"[{PLUGIN_ID}] 记录会话失败: {e}")
 
     # ---------------- 跨平台事件适配 ----------------
 
@@ -428,7 +496,13 @@ class GroupVarCommands(Star):
         if not group_id:
             return
         cfg = self._cfg()
-        gcfg = cfg.get("groups", {}).get(group_id)
+        groups = cfg.get("groups", {}) or {}
+        umo = str(getattr(event, "unified_msg_origin", "") or "")
+        # 键优先用会话来源(umo)，兼容存量配置的群号/openid
+        gcfg = groups.get(umo) or groups.get(group_id)
+        await self._record_session(event, group_id)
+        if not gcfg:
+            return
         if not gcfg:
             return
         cmds = gcfg.get("commands", {})
@@ -465,14 +539,6 @@ class GroupVarCommands(Star):
                         return
 
     # ---------------- 权限校验 ----------------
-
-    def _super_set(self, gcfg) -> set:
-        raw = (gcfg or {}).get("super_admins", "") or ""
-        if isinstance(raw, (list, tuple, set)):
-            items = [str(x) for x in raw]
-        else:
-            items = str(raw).replace("，", ",").replace("；", ",").replace(";", ",").split(",")
-        return {x.strip() for x in items if x.strip()}
 
     async def _get_role(self, event):
         """尽力获取发送者群角色: member/admin/owner，失败返回 None"""
@@ -519,14 +585,10 @@ class GroupVarCommands(Star):
         return role
 
     async def _check_perm(self, event, gcfg, perm):
-        """返回 (allowed, 拒绝原因或 None)；本群超级管理员无条件放行"""
+        """返回 (allowed, 拒绝原因或 None)"""
         perm = perm if perm in PERM_LEVELS else "member"
-        if self._sender_id(event) in self._super_set(gcfg):
-            return True, None
         if perm == "member":
             return True, None
-        if perm == "super":
-            return False, "此指令仅限本群超级管理员，请把你的 QQ 号加入控制面板【群超级管理员】"
         role = await self._get_role(event)
         if role is None:
             return False, f"无法识别你的群身份，暂不能执行「{PERM_LABELS[perm]}」级指令"

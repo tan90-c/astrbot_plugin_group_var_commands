@@ -5,9 +5,9 @@
     "default": 30
   },
   "groups": {
-    "description": "按群号配置：群号 -> {super_admins, groups, commands}",
+    "description": "会话来源(umo，推荐)或群号 -> {groups, commands}",
     "type": "dict",
     "default": {},
-    "hint": "super_admins=本群超级管理员QQ逗号分隔(不跨群)；groups=自定义变量分组(分组名->键值对)；commands.<指令名> 含 script(形参从 args/cmd/alias/value/sender_id/sender_name/group_id 按名取用；返回值转字符串直接回复，报错静默)、perm(member/admin/owner/super)、aliases(附属指令名数组)。建议用 WebUI 控制面板编辑，详见 README。"
+    "hint": "建议通过控制面板“添加并绑定会话”自动填写键（会话来源umo）。groups=自定义变量分组(分组名->键值对)；commands.<指令名> 含 script(形参从 args/cmd/alias/value/sender_id/sender_name/group_id 按名取用；返回值转字符串直接回复，报错静默)、perm(member/admin/owner)、aliases(别名数组，支持多个 {*} 占位捕获)。详见 README。"
   }
 }

@@ -10,7 +10,6 @@ const PERM_OPTS = [
   ["member", "群成员（包含管理和群主）"],
   ["admin", "群管理（包含群主）"],
   ["owner", "群主"],
-  ["super", "超级管理员（指定QQ）"],
 ];
 const PARAM_HINT =
   "默认入参（main 里按名字取用即可，用不到的不写）：\n" +
@@ -22,6 +21,7 @@ const PARAM_HINT =
   "  sender_id / sender_name / group_id";
 
 let cfg = { script_timeout: 30, groups: {} };
+let sessions = [];
 let selGroup = "";
 let selCmd = "";
 let selAgg = "";
@@ -178,7 +178,7 @@ function gcur() {
   if (!g) return null;
   g.groups = g.groups || {};
   g.commands = g.commands || {};
-  g.super_admins = g.super_admins || "";
+  delete g.super_admins;
   g.aggregate = true;
   return g;
 }
@@ -200,10 +200,11 @@ async function loadCfg() {
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
-    g.super_admins = g.super_admins || "";
+    delete g.super_admins;
     for (const c of Object.values(g.commands)) {
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
       delete c.outputs;
+      if (c.perm === "super") c.perm = "owner";
     }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
@@ -331,15 +332,18 @@ function addKvRow(host, getDict, setDict, baseKey) {
 
 // ---------- 渲染 ----------
 
+function sessionLabel(key) {
+  const gid = key.indexOf(":") >= 0 ? key.split(":").pop() : key;
+  const s = sessions.find((x) => x.group_id === gid || x.umo === key);
+  return s ? `${s.group_name || gid}（${s.platform || "?"}）` : key;
+}
+
 function renderAll() {
   $("scriptTimeout").value = cfg.script_timeout;
-  const gg = gcur();
-  $("groupSuperAdmins").value = gg ? gg.super_admins : "";
-  $("groupSuperAdmins").disabled = !gg;
   const gs = $("groupSelect");
   gs.innerHTML = "";
-  if (!gids().length) gs.appendChild(new Option("（暂无群，请先添加）"));
-  for (const gid of gids()) gs.appendChild(new Option(gid, gid));
+  if (!gids().length) gs.appendChild(new Option("（暂无群，请从上方绑定会话）"));
+  for (const gid of gids()) gs.appendChild(new Option(sessionLabel(gid), gid));
   if (selGroup) gs.value = selGroup;
 
   const g = gcur();
@@ -495,7 +499,7 @@ $("btnAddGroup").onclick = () => {
   const gid = $("newGroup").value.trim();
   if (!gid) return toast("请输入群号", true);
   cfg.groups = cfg.groups || {};
-  cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, super_admins: "", groups: {}, commands: {} };
+  cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, groups: {}, commands: {} };
   selGroup = gid;
   $("newGroup").value = "";
   markDirty();
@@ -513,7 +517,6 @@ $("btnAddGroupCopy").onclick = () => {
       if (!yes) return;
       cfg.groups[gid] = JSON.parse(JSON.stringify({
         aggregate: true,
-        super_admins: src.super_admins || "",
         groups: src.groups || {},
         commands: src.commands || {},
       }));
@@ -527,7 +530,6 @@ $("btnAddGroupCopy").onclick = () => {
   }
   cfg.groups[gid] = JSON.parse(JSON.stringify({
     aggregate: true,
-    super_admins: src.super_admins || "",
     groups: src.groups || {},
     commands: src.commands || {},
   }));
@@ -555,13 +557,45 @@ $("scriptTimeout").addEventListener("change", (e) => {
   markDirty();
   renderRaw();
 });
-$("groupSuperAdmins").addEventListener("change", (e) => {
-  const g = gcur();
-  if (!g) return;
-  g.super_admins = e.target.value.trim();
-  markDirty();
-  renderRaw();
-});
+async function loadSessions() {
+  try {
+    const data = await bridge.apiGet("sessions");
+    sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  } catch (e) {
+    sessions = [];
+  }
+  const sel = $("sessionSelect");
+  sel.innerHTML = "";
+  if (!sessions.length) {
+    sel.appendChild(new Option("（暂无已见会话：机器人进群发言后自动出现）"));
+    return;
+  }
+  for (const x of sessions) {
+    sel.appendChild(new Option(`${x.group_name || x.group_id}（${x.platform || "?"} : ${x.group_id}）`, x.group_id));
+  }
+}
+$("btnRefreshSessions").onclick = async () => {
+  await loadSessions();
+  toast("会话列表已刷新");
+};
+$("btnAddFromSession").onclick = async () => {
+  if (!sessions.length) {
+    await loadSessions();
+    if (!sessions.length) return toast("暂无可选会话，请先让机器人在目标群发一条消息", true);
+  }
+  const gid = $("sessionSelect").value;
+  const x = sessions.find((v) => v.group_id === gid);
+  if (!x) return toast("请选择会话", true);
+  const key = x.umo || x.group_id;
+  cfg.groups = cfg.groups || {};
+  if (!cfg.groups[key]) {
+    cfg.groups[key] = { aggregate: true, groups: {}, commands: {} };
+    markDirty();
+  }
+  selGroup = key;
+  renderAll();
+  toast(cfg.groups[key] ? `已绑定会话 ${x.group_name || gid}（保存后生效）` : "已存在");
+};
 $("aggSelect").addEventListener("change", (e) => {
   selAgg = e.target.value;
   renderAll();
@@ -662,14 +696,13 @@ $("btnRawApply").onclick = () => {
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
-    g.super_admins = Array.isArray(g.super_admins)
-      ? g.super_admins.join(",")
-      : g.super_admins || "";
+    delete g.super_admins;
     delete g.vars;
     for (const c of Object.values(g.commands)) {
       delete c.inputs;
       delete c.outputs;
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
+      if (c.perm === "super") c.perm = "owner";
       if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
     }
   }
@@ -688,6 +721,7 @@ window.addEventListener("beforeunload", (e) => {
 // ---------- 初始化 ----------
 
 await bridge.ready();
+loadSessions().catch(() => {});
 try {
   await loadCfg();
 } catch (e) {
