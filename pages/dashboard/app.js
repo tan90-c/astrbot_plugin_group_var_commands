@@ -139,8 +139,9 @@ function kvRow(k, v, phKey, phVal) {
   return tr;
 }
 
-// dict 与表格双向：每次 change/删除 从 DOM 行重建 dict，再重画
-function kvTable(host, getDict, setDict) {
+// dict 与表格双向：每次 change/移动/删除 从 DOM 行按顺序重建 dict
+function kvTable(host, getDict, setDict, opts = {}) {
+  const sortable = !!opts.sortable;
   host.innerHTML = "";
   const dict = getDict();
   const entries = Object.entries(dict);
@@ -149,7 +150,9 @@ function kvTable(host, getDict, setDict) {
     return;
   }
   const tb = document.createElement("table");
-  tb.innerHTML = "<tr><th>键</th><th>值</th><th>操作</th></tr>";
+  tb.innerHTML = sortable
+    ? "<tr><th>键</th><th>值</th><th>排序</th><th>操作</th></tr>"
+    : "<tr><th>键</th><th>值</th><th>操作</th></tr>";
   for (const [k, v] of entries) tb.appendChild(kvRow(k, v));
   host.appendChild(tb);
 
@@ -168,12 +171,36 @@ function kvTable(host, getDict, setDict) {
   tb.addEventListener("change", harvest);
   for (const tr of Array.from(tb.querySelectorAll("tr"))) {
     if (!tr._del) continue;
-    tr._del.onclick = async () => {
+    tr._del.onclick = () => {
       const k = tr._key.value.trim();
       tr.remove();
       harvest();
       if (k) toast(`已删除 ${k}（保存后生效）`);
     };
+    if (sortable) {
+      const cell = document.createElement("td");
+      const up = document.createElement("button");
+      up.className = "btn small secondary";
+      up.textContent = "↑";
+      up.title = "上移";
+      const down = document.createElement("button");
+      down.className = "btn small secondary";
+      down.textContent = "↓";
+      down.title = "下移";
+      down.style.marginLeft = "4px";
+      up.onclick = () => {
+        const p = tr.previousElementSibling;
+        if (p && p._key) { tb.insertBefore(tr, p); harvest(); }
+      };
+      down.onclick = () => {
+        const n = tr.nextElementSibling;
+        if (n && n._key) { tb.insertBefore(n, tr); harvest(); }
+      };
+      up.addEventListener("click", (e) => e.preventDefault());
+      down.addEventListener("click", (e) => e.preventDefault());
+      cell.append(up, down);
+      tr.insertBefore(cell, tr.children[2]);
+    }
   }
 }
 
@@ -218,7 +245,8 @@ function renderAll() {
     kvTable(
       $("aggTable"),
       () => g.groups[selAgg],
-      (d) => { g.groups[selAgg] = d; }
+      (d) => { g.groups[selAgg] = d; },
+      { sortable: true }
     );
   } else {
     $("aggTable").innerHTML = '<div class="empty">请先添加分组</div>';
@@ -471,17 +499,17 @@ $("btnAddAgg").onclick = () => {
 $("btnRenameAgg").onclick = () => {
   const g = gcur();
   if (!g || !selAgg) return toast("请先选择分组", true);
-  const n = $("renameAgg").value.trim();
-  if (!n) return toast("请输入新分组名", true);
+  const n = $("newAgg").value.trim();
+  if (!n) return toast("请先在「分组名」输入框填写新名称", true);
   if (n === selAgg) return;
   if (g.groups[n]) return toast("同名分组已存在", true);
   g.groups[n] = g.groups[selAgg];
   delete g.groups[selAgg];
   selAgg = n;
-  $("renameAgg").value = "";
+  $("newAgg").value = "";
   markDirty();
   renderAll();
-  toast(`分组已改名（保存后生效）`);
+  toast(`分组已改名为 ${n}（保存后生效）`);
 };
 $("btnDelAgg").onclick = async () => {
   const g = gcur();
