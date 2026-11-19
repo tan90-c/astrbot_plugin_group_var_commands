@@ -2,7 +2,7 @@ name: astrbot_plugin_group_var_commands
 display_name: 群变量指令
 desc: 按群号配置变量与聚合分组，自定义指令绑定 Python 脚本执行，可引用服务器配置变量
 author: tan90-c
-version: 1.1.0
+version: 1.1.1
 repo: https://github.com/tan90-c/astrbot_plugin_group_var_commands
 requires:
   astrbot: ">=3.4.0"

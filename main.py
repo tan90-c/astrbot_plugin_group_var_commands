@@ -72,7 +72,7 @@ def _coerce(value, typ):
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行",
-    "1.1.0",
+    "1.1.1",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -194,7 +194,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 消息入口 ----------------
 
-    @filter.event_message()
+    @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
         if not event.is_group():
             return
