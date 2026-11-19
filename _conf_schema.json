@@ -4,10 +4,16 @@
     "type": "int",
     "default": 30
   },
+  "reply_format": {
+    "description": "回复格式: markdown=卡片(手机QQ可见,PC端可能空白); text=纯文本(强制msg_type=0,推荐)",
+    "type": "string",
+    "default": "markdown",
+    "hint": "面板首页可切换，改动即时保存。必须存在于本 schema 中，插件更新/重载后才会保留该值。"
+  },
   "groups": {
     "description": "会话来源(umo，推荐)或群号 -> {groups, commands}",
     "type": "dict",
     "default": {},
-    "hint": "建议通过控制面板“添加并绑定会话”自动填写键（会话来源umo）。groups=自定义变量分组(分组名->键值对)；commands.<指令名> 含 script(形参从 args/cmd/alias/value/sender_id/sender_name/group_id 按名取用；返回值转字符串直接回复，报错静默)与 aliases(别名数组，支持多个 {*} 占位捕获)。v2.0.0 起无执行权限档，群内任何成员可触发；旧 perm/super_admins 字段保存时自动丢弃。详见 README。"
+    "hint": "建议通过控制面板“添加并绑定会话”自动填写键（会话来源umo）。每个会话独立三部分：groups=自定义变量分组(分组名->键值对)；modules=全局函数模块(模块名->Python源码，指令脚本 import 即用)；commands.<指令名> 含 script(形参从 args/cmd/alias/value 按名取用；返回值转字符串直接回复，报错静默)与 aliases(别名数组，任意成对 {...} 组都是通配占位，如 查{*}玩家 收“查二服玩家”)。群内任何成员可触发。详见 README。"
   }
 }

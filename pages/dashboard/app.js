@@ -783,15 +783,20 @@ async function doCopy(what) {
   if (!g || !srcKey || !cfg.groups[srcKey]) return toast("请选择要复制的来源标签页", true);
   const src = cfg.groups[srcKey];
   const name = gkeyInfo(srcKey).name;
-  const scope = what === "all" ? "变量分组和指令" : what === "vars" ? "变量分组" : "指令";
+  const scope = what === "all" ? "变量分组、函数模块和指令" : what === "vars" ? "变量分组" : "指令和函数模块";
   const hasTarget = what === "all"
-    ? (Object.keys(g.groups).length || Object.keys(g.commands).length)
-    : what === "vars" ? Object.keys(g.groups).length : Object.keys(g.commands).length;
+    ? (Object.keys(g.groups).length || Object.keys(g.commands).length || Object.keys(g.modules || {}).length)
+    : what === "vars" ? Object.keys(g.groups).length
+      : (Object.keys(g.commands).length || Object.keys(g.modules || {}).length);
   if (hasTarget && !(await askConfirm(`当前群的${scope}将被「${name}」的覆盖。继续？`))) return;
   if (what === "vars" || what === "all") g.groups = JSON.parse(JSON.stringify(src.groups || {}));
-  if (what === "cmds" || what === "all") g.commands = JSON.parse(JSON.stringify(src.commands || {}));
+  if (what === "cmds" || what === "all") {
+    g.commands = JSON.parse(JSON.stringify(src.commands || {}));
+    g.modules = JSON.parse(JSON.stringify(src.modules || {}));
+  }
   selAgg = "";
   selCmd = "";
+  selMod = "";
   markDirty();
   renderAll();
   await saveNow();

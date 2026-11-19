@@ -120,7 +120,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.0.2",
+    "1.0.3",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -487,6 +487,23 @@ class GroupVarCommands(Star):
         return entries
 
     @staticmethod
+    def _plain_text(event) -> str:
+        """提取纯文本指令：优先只拼接 Plain 组件（剔除 @机器人/回复/图片等组件），
+        无组件链时退化为 message_str 并正则剥离 [At:xxx] 类标记。"""
+        chain = None
+        try:
+            chain = getattr(getattr(event, "message_obj", None), "chain", None)
+        except Exception:
+            chain = None
+        if chain:
+            parts = [getattr(c, "text", "") or "" for c in chain
+                     if c.__class__.__name__ == "Plain"]
+            if any(parts):
+                return "".join(parts)
+        s = event.get_message_str() or ""
+        return re.sub(r"\[[A-Za-z]+:[^\]]*\]", "", s)
+
+    @staticmethod
     def _chat_id(event) -> str:
         """私聊会话的对端标识（openid 等）"""
         sid = ""
@@ -516,7 +533,7 @@ class GroupVarCommands(Star):
         cmds = gcfg.get("commands", {})
         if not cmds:
             return
-        text = (event.get_message_str() or "").strip()
+        text = self._plain_text(event).strip()
         if not text:
             return
         # 支持两种触发形式：「<指令名/别名> <value>」与「/<指令名/别名> <value>」
