@@ -73,7 +73,7 @@ def _coerce(value, typ):
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行",
-    "1.0.1",
+    "1.0.2",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):

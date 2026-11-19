@@ -25,20 +25,18 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
       },
       "groups": {
         "Group1": {
-          "role_id": "10001",
-          "role_name": "小明",
-          "urs": "abc123",
-          "tongqian": 350
+          "ip": "192.168.1.10",
+          "port": "25565",
+          "name": "示例服务器"
         }
       },
       "commands": {
-        "查询": {
-          "script": "def main(role_id, role_name, urs, tongqian):\n    result = f\"预存id: {role_id}\\n昵称: {role_name}\\nurs: {urs}(已冻结)\\n铜钱: {tongqian}\"\n    return {\"result\": result}",
+        "状态": {
+          "script": "def main(ip, port, name):\n    result = f\"{name} ({ip}:{port}) 运行中\"\n    return {\"result\": result}",
           "inputs": [
-            {"name": "role_id", "source": "gvar:Group1.role_id", "type": "string"},
-            {"name": "role_name", "source": "gvar:Group1.role_name", "type": "string"},
-            {"name": "urs", "source": "gvar:Group1.urs", "type": "string"},
-            {"name": "tongqian", "source": "gvar:Group1.tongqian", "type": "number"}
+            {"name": "ip", "source": "gvar:Group1.ip", "type": "string"},
+            {"name": "port", "source": "gvar:Group1.port", "type": "string"},
+            {"name": "name", "source": "gvar:Group1.name", "type": "string"}
           ],
           "outputs": [{"name": "result", "label": "result"}]
         }
@@ -56,8 +54,8 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
 - `groups.<群号>`：每个群一份配置。
   - `aggregate`：是否开启聚合分组。
   - `vars`：自定义变量（键值对），不开聚合时直接平铺使用。
-  - `groups.<分组名>`：聚合分组内的变量（对应图1的 Group1 + 添加分组）。
-  - `commands.<指令名>`：`script`（Python 源码，需定义 `main` 并 `return dict`）、`inputs`（入参绑定）、`outputs`（输出变量，对应图2）。
+  - `groups.<分组名>`：聚合分组内的变量（每个分组一组键值对）。
+  - `commands.<指令名>`：`script`（Python 源码，需定义 `main` 并 `return dict`）、`inputs`（入参绑定）、`outputs`（输出变量）。
 
 ## 变量来源（inputs.source 语法）
 
@@ -67,7 +65,7 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
 | `all:vars` | 全部自定义变量（dict） |
 | `gvar:<分组名>.<key>` | 聚合分组内单个变量 |
 | `gall:<分组名>` | 整个聚合分组（dict） |
-| `arg:<n>` | 触发消息的第 n 个参数（`查询 10086` 中 `10086` 为 arg:1） |
+| `arg:<n>` | 触发消息的第 n 个参数（`状态 1区` 中 `1区` 为 arg:1） |
 | `sender_id` / `sender_name` / `group_id` | 触发者/群信息 |
 | `literal:<文本>` | 固定文本 |
 
@@ -96,34 +94,29 @@ AstrBot 插件：按群号配置变量与聚合分组，自定义指令绑定 Py
 /gvc show                          查看当前群完整配置
 ```
 
-## 使用示例（对应图2）
+## 使用示例
 
-1. 管理员在群内：`/gvc cmd add 查询`
-2. `/gvc cmd script 查询`，然后发送：
+以 Hello World 为例：
+
+1. 管理员在群内：`/gvc cmd add 问候`
+2. `/gvc cmd script 问候`，然后发送：
 
 ```python
-def main(role_id, role_name, urs, tongqian):
-    result = f"预存id: {role_id}\n昵称: {role_name}\nurs: {urs}(已冻结)\n铜钱: {tongqian}"
-    return {"result": result}
+def main(name):
+    return {"result": "Hello, " + name + "!"}
 ```
 
-3. 绑定入参：
+3. 绑定入参（这里用固定值演示，也可改用 `var:`/`gvar:`/`arg:` 等来源）：
 
 ```
-/gvc cmd bind 查询 role_id gvar:Group1.role_id string
-/gvc cmd bind 查询 role_name gvar:Group1.role_name string
-/gvc cmd bind 查询 urs gvar:Group1.urs string
-/gvc cmd bind 查询 tongqian gvar:Group1.tongqian number
-/gvc cmd out 查询 result
+/gvc cmd bind 问候 name literal:World
+/gvc cmd out 问候 result
 ```
 
-4. 群成员发送 `查询` → 机器人回复：
+4. 群成员发送 `问候` → 机器人回复：
 
 ```
-result: 预存id: 10001
-昵称: 小明
-urs: abc123(已冻结)
-铜钱: 350
+result: Hello, World!
 ```
 
 ## 注意事项
