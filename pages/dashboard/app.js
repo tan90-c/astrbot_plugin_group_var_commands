@@ -6,11 +6,6 @@ if (!bridge) {
 }
 
 const $ = (id) => document.getElementById(id);
-const PERM_OPTS = [
-  ["member", "群成员（包含管理和群主）"],
-  ["admin", "群管理（包含群主）"],
-  ["owner", "群主"],
-];
 const PARAM_HINT =
   "默认入参（main 里按名字取用即可，用不到的不写）：\n" +
   "  args        自定义变量分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
@@ -204,7 +199,7 @@ async function loadCfg() {
     for (const c of Object.values(g.commands)) {
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
       delete c.outputs;
-      if (c.perm === "super") c.perm = "owner";
+      delete c.perm;
     }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
@@ -395,28 +390,7 @@ function renderCmdBody() {
   c.script = c.script || "";
   c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
   delete c.outputs;
-  if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
-
-  // 执行权限下拉
-  const permRow = document.createElement("div");
-  permRow.className = "row";
-  permRow.style.margin = "0 0 10px";
-  const permLab = document.createElement("span");
-  permLab.className = "hint";
-  permLab.textContent = "执行权限";
-  const permSel = document.createElement("select");
-  for (const [v, t] of PERM_OPTS) permSel.appendChild(new Option(t, v));
-  permSel.value = c.perm;
-  permSel.addEventListener("change", () => {
-    c.perm = permSel.value;
-    markDirty();
-    renderRaw();
-  });
-  const permNote = document.createElement("span");
-  permNote.className = "hint";
-  permNote.textContent = "（超级管理员无条件可用；群管理/群主需 OneBot 适配器支持查询）";
-  permRow.append(permLab, permSel, permNote);
-  host.appendChild(permRow);
+  delete c.perm;
 
   const hint = document.createElement("pre");
   hint.className = "hint paramhint";
@@ -653,7 +627,7 @@ $("btnAddCmd").onclick = () => {
   if (!n) return toast("请输入指令名", true);
   if (/\s/.test(n)) return toast("指令名不能含空格", true);
   if (g.commands[n]) return toast("指令已存在", true);
-  g.commands[n] = { script: "", perm: "member", aliases: [] };
+  g.commands[n] = { script: "", aliases: [] };
   selCmd = n;
   $("newCmd").value = "";
   markDirty();
@@ -702,8 +676,7 @@ $("btnRawApply").onclick = () => {
       delete c.inputs;
       delete c.outputs;
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
-      if (c.perm === "super") c.perm = "owner";
-      if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
+      delete c.perm;
     }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";

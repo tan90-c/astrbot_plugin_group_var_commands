@@ -9,9 +9,9 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 
 配置结构（groups 的键 = 会话来源 umo（推荐，面板“绑定会话”自动填）或群号/openid（兼容））：
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
-- groups.<会话>.commands  自定义指令（script + perm + aliases）
+- groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
-权限仅三档（member/admin/owner，v1.9.0 取消超级管理员/QQ号白名单）。
+v2.0.0 起取消全部执行权限：群内任何成员可触发已配置指令。
 
 群成员发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
 脚本的 main() 函数。触发优先级：主指令名 > 别名；别名同主名重复→调主名指令；
@@ -89,14 +89,6 @@ def _build_all_message_filter():
     )
 
 _ALL_MESSAGE = _build_all_message_filter()
-# 指令权限级别：下拉框三选项（v1.9.0 起取消超级管理员档）
-PERM_LEVELS = ("member", "admin", "owner")
-PERM_LABELS = {
-    "member": "群成员（包含管理和群主）",
-    "admin": "群管理（包含群主）",
-    "owner": "群主",
-}
-ROLE_RANK = {"member": 0, "admin": 1, "owner": 2}
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
 
@@ -124,7 +116,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.9.1",
+    "2.0.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -133,8 +125,6 @@ class GroupVarCommands(Star):
         # AstrBot 会按 _conf_schema.json 注入插件配置对象(AstrBotConfig, 继承自 dict)，
         # 保存路径为 data/config/<插件目录名>_config.json
         self.config: dict = config if config is not None else {}
-        # (群号, 用户id) -> (role, 时间戳)，60 秒角色缓存
-        self._role_cache = {}
         # 已见过的群会话（供面板“绑定会话”选择）
         self._sessions_file = self._sessions_path()
         self._sessions = self._load_sessions()
@@ -227,11 +217,6 @@ class GroupVarCommands(Star):
                 if not isinstance(inputs_raw, list):
                     raise ValueError(f"指令 {cname} 的 inputs 必须是数组")
                 # 旧配置的 inputs/outputs 字段已废弃，保存时自动丢弃
-                perm = str(c.get("perm", "member") or "member").strip().lower()
-                if perm == "super":  # 旧超管档自动降级为群主档
-                    perm = "owner"
-                if perm not in PERM_LEVELS:
-                    raise ValueError(f"指令 {cname} 的 perm 非法：{perm}，须为 member/admin/owner")
                 aliases_in = c.get("aliases", []) or []
                 if not isinstance(aliases_in, list):
                     raise ValueError(f"指令 {cname} 的 aliases 必须是数组")
@@ -253,9 +238,8 @@ class GroupVarCommands(Star):
                         aliases.append(a)
                 cmds[cname] = {
                     "script": str(c.get("script", "") or ""),
-                    "perm": perm,
                     "aliases": aliases,
-                }
+                }  # v2.0.0 取消权限档：perm 字段提交则丢弃
             groups[gid] = {
                 "aggregate": True,
                 "groups": {
@@ -503,8 +487,6 @@ class GroupVarCommands(Star):
         await self._record_session(event, group_id)
         if not gcfg:
             return
-        if not gcfg:
-            return
         cmds = gcfg.get("commands", {})
         if not cmds:
             return
@@ -538,72 +520,9 @@ class GroupVarCommands(Star):
                             yield r
                         return
 
-    # ---------------- 权限校验 ----------------
-
-    async def _get_role(self, event):
-        """尽力获取发送者群角色: member/admin/owner，失败返回 None"""
-        gid, uid = self._group_id(event), self._sender_id(event)
-        key = (gid, uid)
-        now = time.time()
-        hit = self._role_cache.get(key)
-        if hit and now - hit[1] < 60:
-            return hit[0]
-        role = None
-        raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
-        if isinstance(raw, dict):
-            r = raw.get("member_role") or raw.get("role")
-            if isinstance(r, str) and r in ROLE_RANK:
-                role = r
-            else:
-                # QQ 官方机器人 raw 结构 member_roles: 1=群主 2=管理
-                author = raw.get("author") if isinstance(raw.get("author"), dict) else raw
-                roles = author.get("member_roles") if isinstance(author, dict) else None
-                if isinstance(roles, list):
-                    rset = {str(x) for x in roles}
-                    if "1" in rset:
-                        role = "owner"
-                    elif "2" in rset:
-                        role = "admin"
-                    elif rset:
-                        role = "member"
-        if role is None:
-            bot = getattr(event, "bot", None)
-            if bot is not None and hasattr(bot, "call_api"):
-                try:
-                    data = await bot.call_api(
-                        "get_group_member_info",
-                        group_id=gid,
-                        user_id=uid,
-                        no_cache=False,
-                    )
-                    if isinstance(data, dict) and data.get("role") in ROLE_RANK:
-                        role = data["role"]
-                except Exception as e:
-                    logger.warning(f"[{PLUGIN_ID}] get_group_member_info 失败: {e}")
-        if role is not None:
-            self._role_cache[key] = (role, now)
-        return role
-
-    async def _check_perm(self, event, gcfg, perm):
-        """返回 (allowed, 拒绝原因或 None)"""
-        perm = perm if perm in PERM_LEVELS else "member"
-        if perm == "member":
-            return True, None
-        role = await self._get_role(event)
-        if role is None:
-            return False, f"无法识别你的群身份，暂不能执行「{PERM_LABELS[perm]}」级指令"
-        need = 2 if perm == "owner" else 1
-        if ROLE_RANK[role] < need:
-            return False, f"权限不足：此指令需要「{PERM_LABELS[perm]}」"
-        return True, None
-
     # ---------------- 指令执行 ----------------
 
     async def _execute(self, event, cfg, gcfg, name, cmd_cfg, value_list, triggered=None):
-        ok, why = await self._check_perm(event, gcfg, cmd_cfg.get("perm", "member"))
-        if not ok:
-            yield event.plain_result(f"⛔ {why}")
-            return
         script = (cmd_cfg.get("script") or "").strip()
         if not script:
             yield event.plain_result(
