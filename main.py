@@ -92,6 +92,8 @@ def _build_all_message_filter():
 _ALL_MESSAGE = _build_all_message_filter()
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
+# 别名模板占位：任意成对花括号组（{*} / {value} / {二服} …）统一当通配捕获
+WILD_GROUP = re.compile(r"\{[^{}]*\}")
 
 # 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
 RUNNER = r"""
@@ -118,7 +120,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.0.1",
+    "1.0.2",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -240,10 +242,10 @@ class GroupVarCommands(Star):
                         continue
                     if re.search(r"\s", a):
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能含空格")
-                    tmp = a.replace("{*}", "")
+                    tmp = WILD_GROUP.sub("", a)
                     if "{" in tmp or "}" in tmp:
-                        raise ValueError(f"指令 {cname} 的别名 {a} 只允许使用 {{*}} 占位符")
-                    if "{*}" in a and not tmp:
+                        raise ValueError(f"指令 {cname} 的别名 {a} 花括号不成对或嵌套，占位符须为成对的 {{...}} 组")
+                    if WILD_GROUP.search(a) and not tmp:
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能只是占位符，需有固定文字")
                     if a == cname:
                         continue
@@ -460,7 +462,8 @@ class GroupVarCommands(Star):
 
     def _trigger_index(self, cmds: dict):
         """构建触发项表：主名优先；别名与其他主名重复→归主名指令；
-        别名之间重复→后创建的指令赢。模板别名支持多个 {*} 占位，
+        别名之间重复→后创建的指令赢。模板别名支持多个花括号占位（任意 {...} 组等价，
+        如 查{*}玩家 / 查{服务器}玩家），
         每个 {*} 按顺序捕获为 value 的一个元素（如 查{*}玩{*}家{*}）。"""
         trigger = {}
         for cname in cmds:
@@ -473,14 +476,14 @@ class GroupVarCommands(Star):
                 trigger[a] = cname  # 别名间重复→后创建者覆盖
         entries = []
         for tok, canon in trigger.items():
-            if "{*}" in tok:
-                parts = tok.split("{*}")
+            if WILD_GROUP.search(tok):
+                parts = WILD_GROUP.split(tok)
                 pattern = "^" + "(.+?)".join(re.escape(p) for p in parts) + "$"
                 entries.append((tok, canon, "tpl", re.compile(pattern)))
             else:
                 entries.append((tok, canon, "fixed", None))
         # 固定文字部分长的优先；同长时非模板优先
-        entries.sort(key=lambda e: (len(e[0].replace("{*}", "")), "{*}" not in e[0]), reverse=True)
+        entries.sort(key=lambda e: (len(WILD_GROUP.sub("", e[0])), not WILD_GROUP.search(e[0])), reverse=True)
         return entries
 
     @staticmethod
