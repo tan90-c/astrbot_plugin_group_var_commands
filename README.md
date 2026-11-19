@@ -10,7 +10,7 @@ AstrBot 插件：按群号管理聚合分组变量，自定义指令绑定 Pytho
 
 要求 AstrBot >= 4.9.2（控制面板；核心功能 >= 3.4），Python >= 3.10。脚本在独立 Python 子进程中运行，无额外依赖。
 
-支持平台：aiocqhttp（OneBot v11，NapCat/LLBot 等）、qq_official（QQ 官方机器人）、qq_official_webhook。其他平台的群聊理论上也能触发，但未做适配验证。
+仅支持 QQ 官方机器人平台：qq_official、qq_official_webhook（其他平台不保证可用）。
 
 ## 控制面板
 
@@ -18,14 +18,14 @@ AstrBot 插件：按群号管理聚合分组变量，自定义指令绑定 Pytho
 2. 自定义变量分组：添加/改名/删除分组（均有确认弹窗）与每组内变量增删改，变量表支持 ↑↓ 排序
 3. 指令配置：创建/删除指令、别名（支持多个 `{*}` 模板）、代码编辑器（高亮+行号+Tab缩进）
 4. 高级 JSON：双向同步，可整段粘贴导入
-5. v1.9.0 变更：新增会话绑定；**彻底取消超级管理员/QQ号白名单**（旧 super 档自动降为群主档，super_admins 字段保存时丢弃）
+5. v2.1.0 变更：**不再兼容任何旧版配置**——`perm`/`super_admins`/`vars`/`inputs`/`outputs`/数字群号键全部移除，`{value}` 占位不再自动转换（请统一用 `{*}`）
 
 ## 会话绑定（v1.9.0）
 
 1. 机器人被拉进群并在该群收到过任意消息后，该群就会出现在面板「群会话」下拉里（含群名/平台/群号或openid）
 2. 点「添加并绑定会话」即以会话来源 umo 为键创建配置，保存生效；跨平台不会串号
-3. 存量配置的数字群号/openid 键仍兼容可用（ umo 键优先匹配）
-4. QQ 官方机器人无法取到明文群号/QQ号（平台限制，只有 group_openid/member_openid）；要明文和 QQ 号白名单类玩法请用 OneBot v11（NapCat/LLBot）接入
+3. 配置键只识别会话来源 umo，不兼容手填群号/openid 旧键
+4. QQ 官方机器人拿不到明文群号/QQ号（平台限制，只有 group_openid/member_openid），脚本入参 sender_id/group_id 均为 openid
 
 ## 指令别名（附属指令名，模板 v1.8.0）
 
@@ -78,7 +78,7 @@ s 1区                ← 别名触发：cmd="状态"，alias="s"，value=["1区
 {
   "script_timeout": 30,
   "groups": {
-    "aiocqhttp:Group_Message:1122334455": {
+    "qq_official:QQ:Group:C375264E84931D4134A62B4B7A8C925B": {
       "aggregate": true,
       "groups": {
         "Group1": { "ip": "192.168.1.10", "port": "25565", "name": "示例服务器" }

@@ -173,7 +173,6 @@ function gcur() {
   if (!g) return null;
   g.groups = g.groups || {};
   g.commands = g.commands || {};
-  delete g.super_admins;
   g.aggregate = true;
   return g;
 }
@@ -190,16 +189,12 @@ async function loadCfg() {
     script_timeout: data.script_timeout ?? 30,
     groups: data.groups || {},
   };
-  delete cfg.super_admins;
   for (const g of Object.values(cfg.groups)) {
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
-    delete g.super_admins;
     for (const c of Object.values(g.commands)) {
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
-      delete c.outputs;
-      delete c.perm;
     }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
@@ -389,8 +384,6 @@ function renderCmdBody() {
   const c = g.commands[selCmd];
   c.script = c.script || "";
   c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
-  delete c.outputs;
-  delete c.perm;
 
   const hint = document.createElement("pre");
   hint.className = "hint paramhint";
@@ -471,7 +464,7 @@ $("groupSelect").addEventListener("change", (e) => {
 });
 $("btnAddGroup").onclick = () => {
   const gid = $("newGroup").value.trim();
-  if (!gid) return toast("请输入群号", true);
+  if (!gid) return toast("请输入会话来源(umo)", true);
   cfg.groups = cfg.groups || {};
   cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, groups: {}, commands: {} };
   selGroup = gid;
@@ -481,11 +474,11 @@ $("btnAddGroup").onclick = () => {
 };
 $("btnAddGroupCopy").onclick = () => {
   const gid = $("newGroup").value.trim();
-  if (!gid) return toast("请输入新群号", true);
+  if (!gid) return toast("请输入新会话来源(umo)", true);
   const src = gcur();
   if (!src) return toast("请先选择要复制的源群", true);
   const srcId = selGroup;
-  if (gid === selGroup) return toast("新群号与当前群相同", true);
+  if (gid === selGroup) return toast("新会话与当前相同", true);
   if (cfg.groups[gid]) {
     askConfirm(`群 ${gid} 已存在，其配置将被源群 ${selGroup} 覆盖。继续？`).then((yes) => {
       if (!yes) return;
@@ -670,13 +663,8 @@ $("btnRawApply").onclick = () => {
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
-    delete g.super_admins;
-    delete g.vars;
     for (const c of Object.values(g.commands)) {
-      delete c.inputs;
-      delete c.outputs;
       c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
-      delete c.perm;
     }
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";

@@ -7,11 +7,11 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 1. WebUI 控制页面（推荐）：插件详情页 → 「群变量指令 · 控制面板」可视化编辑
 2. 直接编辑 data/config/ 下的插件设置 JSON
 
-配置结构（groups 的键 = 会话来源 umo（推荐，面板“绑定会话”自动填）或群号/openid（兼容））：
+配置结构（groups 的键 = 会话来源 umo，面板“绑定会话”自动填写）：
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
-v2.0.0 起取消全部执行权限：群内任何成员可触发已配置指令。
+仅支持 QQ 官方机器人平台（qq_official / qq_official_webhook）；不兼容旧版配置字段。
 
 群成员发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
 脚本的 main() 函数。触发优先级：主指令名 > 别名；别名同主名重复→调主名指令；
@@ -116,7 +116,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.0.0",
+    "2.1.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -186,24 +186,20 @@ class GroupVarCommands(Star):
             raise ValueError("script_timeout 需在 1-600 秒之间")
         groups_in = data.get("groups")
         if not isinstance(groups_in, dict):
-            raise ValueError("groups 必须是 JSON 对象（群号 -> 配置）")
+            raise ValueError("groups 必须是 JSON 对象（会话来源 umo -> 配置）")
         groups: dict = {}
         for gid, g in groups_in.items():
             gid = str(gid).strip()
             if not gid:
-                raise ValueError("群号不能为空")
+                raise ValueError("会话键(umo)不能为空")
             if not isinstance(g, dict):
                 raise ValueError(f"群 {gid} 的配置必须是对象")
-            vars_in = g.get("vars", {}) or {}
             agg_in = g.get("groups", {}) or {}
             cmds_in = g.get("commands", {}) or {}
-            if not isinstance(vars_in, dict):
-                raise ValueError(f"群 {gid} 的 vars 必须是对象")
             if not isinstance(agg_in, dict):
                 raise ValueError(f"群 {gid} 的聚合分组必须是对象")
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
-            # v1.9.0 取消 super_admins：提交则直接丢弃
             cmds: dict = {}
             for cname, c in cmds_in.items():
                 cname = str(cname).strip()
@@ -213,16 +209,12 @@ class GroupVarCommands(Star):
                     raise ValueError(f"指令 {cname} 的配置必须是对象")
                 if not isinstance(c.get("script", ""), str):
                     raise ValueError(f"指令 {cname} 的 script 必须是字符串")
-                inputs_raw = c.get("inputs", []) or []
-                if not isinstance(inputs_raw, list):
-                    raise ValueError(f"指令 {cname} 的 inputs 必须是数组")
-                # 旧配置的 inputs/outputs 字段已废弃，保存时自动丢弃
                 aliases_in = c.get("aliases", []) or []
                 if not isinstance(aliases_in, list):
                     raise ValueError(f"指令 {cname} 的 aliases 必须是数组")
                 aliases = []
                 for a in aliases_in:
-                    a = self._norm_token(str(a).strip())
+                    a = str(a).strip()
                     if not a:
                         continue
                     if re.search(r"\s", a):
@@ -239,7 +231,7 @@ class GroupVarCommands(Star):
                 cmds[cname] = {
                     "script": str(c.get("script", "") or ""),
                     "aliases": aliases,
-                }  # v2.0.0 取消权限档：perm 字段提交则丢弃
+                }
             groups[gid] = {
                 "aggregate": True,
                 "groups": {
@@ -247,7 +239,7 @@ class GroupVarCommands(Star):
                     for k, v in agg_in.items()
                 },
                 "commands": cmds,
-            }  # 旧 vars 字段保存时自动丢弃
+            }
         return {"script_timeout": timeout, "groups": groups}
 
     async def _save(self) -> bool:
@@ -275,7 +267,6 @@ class GroupVarCommands(Star):
         cfg = self._cfg()
         cfg["script_timeout"] = cleaned["script_timeout"]
         cfg["groups"] = cleaned["groups"]
-        cfg.pop("super_admins", None)  # 旧的全局字段已废弃，清理掉
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
         return json_response({"saved": True})
@@ -437,16 +428,9 @@ class GroupVarCommands(Star):
             return json.dumps(result, ensure_ascii=False)
         return str(result)
 
-    @staticmethod
-    def _format_result(result, outputs) -> str:  # 已废弃，保留兼容
-        return GroupVarCommands._result_to_text(result)
 
     # ---------------- 消息入口 ----------------
 
-    @staticmethod
-    def _norm_token(tok: str) -> str:
-        """统一模板写法：旧 {value} 自动转为 {*}"""
-        return tok.replace("{value}", "{*}")
 
     def _trigger_index(self, cmds: dict):
         """构建触发项表：主名优先；别名与其他主名重复→归主名指令；
@@ -457,13 +441,12 @@ class GroupVarCommands(Star):
             trigger[cname] = cname
         for cname, c in cmds.items():
             for a in (c or {}).get("aliases", []) or []:
-                a = self._norm_token(str(a).strip())
+                a = str(a).strip()
                 if not a or a in cmds:  # 与主名重复→主名指令赢，跳过
                     continue
                 trigger[a] = cname  # 别名间重复→后创建者覆盖
         entries = []
         for tok, canon in trigger.items():
-            tok = self._norm_token(tok)
             if "{*}" in tok:
                 parts = tok.split("{*}")
                 pattern = "^" + "(.+?)".join(re.escape(p) for p in parts) + "$"
@@ -482,8 +465,8 @@ class GroupVarCommands(Star):
         cfg = self._cfg()
         groups = cfg.get("groups", {}) or {}
         umo = str(getattr(event, "unified_msg_origin", "") or "")
-        # 键优先用会话来源(umo)，兼容存量配置的群号/openid
-        gcfg = groups.get(umo) or groups.get(group_id)
+        # 仅按会话来源(umo)匹配
+        gcfg = groups.get(umo)
         await self._record_session(event, group_id)
         if not gcfg:
             return
@@ -539,7 +522,6 @@ class GroupVarCommands(Star):
             "cmd": name,
             "alias": "" if (triggered is None or triggered == name) else str(triggered),
             "value": value_list,
-            "vars": copy.deepcopy(gcfg.get("vars", {}) or {}),
             "sender_id": self._sender_id(event),
             "sender_name": str(sender_name),
             "group_id": self._group_id(event),

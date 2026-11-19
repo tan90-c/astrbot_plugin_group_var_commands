@@ -71,16 +71,16 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
       <button class="btn small" id="btnAddFromSession">添加并绑定会话</button>
       <button class="btn small secondary" id="btnRefreshSessions">刷新会话列表</button>
     </div>
-    <div class="hint">机器人所在群发过一条消息后会出现在列表里，直接绑定会话来源，无需手动填群号</div>
+    <div class="hint">机器人所在群发过一条消息后会出现在列表里（仅支持 QQ 官方机器人平台）</div>
     <div class="row">
       <span class="hint">脚本执行超时（秒）</span>
       <input id="scriptTimeout" type="number" min="1" max="600" style="width:100px" />
       <span class="hint">1-600</span>
     </div>
     <details>
-      <summary class="hint">高级：手动输入群号/会话来源(umo)</summary>
+      <summary class="hint">高级：手动输入会话来源(umo)</summary>
       <div class="row">
-        <input id="newGroup" placeholder="群号或 umo，如 aiocqhttp:Group_Message:123456" style="width:320px" />
+        <input id="newGroup" placeholder="会话来源 umo（一般通过上方会话列表绑定，无需手填）" style="width:320px" />
         <button class="btn small" id="btnAddGroup">添加群</button>
         <button class="btn small secondary" id="btnAddGroupCopy" title="新建并复制当前选中群的分组/指令配置">添加并复制当前配置</button>
         <button class="btn small danger" id="btnDelGroup">删除当前群</button>
