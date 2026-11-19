@@ -8,17 +8,18 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 2. 直接编辑 data/config/ 下的插件设置 JSON
 
 配置结构：
-- groups.<群号>.vars      群自定义变量（可存服务器配置）
-- groups.<群号>.groups    聚合分组（分组名 -> 键值对），默认形式，可多组
-- groups.<群号>.commands  自定义指令（脚本 + 输出变量）
+- groups.<群号>.super_admins 本群超级管理员QQ（逗号分隔，不跨群）
+- groups.<群号>.groups    自定义变量分组（分组名 -> 键值对）
+- groups.<群号>.commands  自定义指令（script + outputs + perm + aliases）
 - script_timeout          脚本执行超时秒数
 
-群成员发送「<指令名> <value>」或「/<指令名> <value>」即执行对应 Python 脚本的
-main() 函数。默认入参（main 按名取用，RUNNER 自动过滤）：
-  args        聚合分组字典：{分组名: {变量名: 值}}
-  cmd         触发的指令名
+群成员发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
+脚本的 main() 函数。触发优先级：主指令名 > 别名；别名同主名重复→调主名指令；
+别名间重复→后创建的指令赢。默认入参（main 按名取用，RUNNER 自动过滤）：
+  args        自定义变量分组字典：{分组名: {变量名: 值}}
+  cmd         主指令名
+  alias       命中的别名（主名触发时为空串）
   value       指令名后面的参数文本（原始字符串）
-  vars        群自定义变量字典
   sender_id / sender_name / group_id
 返回 dict 按 outputs 渲染为回复（未配 outputs 则全部键输出）。
 """
@@ -27,6 +28,7 @@ import asyncio
 import copy
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -122,7 +124,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "1.4.1",
+    "1.5.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -239,21 +241,35 @@ class GroupVarCommands(Star):
                 perm = str(c.get("perm", "member") or "member").strip().lower()
                 if perm not in PERM_LEVELS:
                     raise ValueError(f"指令 {cname} 的 perm 非法：{perm}，须为 member/admin/owner/super")
+                aliases_in = c.get("aliases", []) or []
+                if not isinstance(aliases_in, list):
+                    raise ValueError(f"指令 {cname} 的 aliases 必须是数组")
+                aliases = []
+                for a in aliases_in:
+                    a = str(a).strip()
+                    if not a:
+                        continue
+                    if re.search(r"\s", a):
+                        raise ValueError(f"指令 {cname} 的别名 {a} 不能含空格")
+                    if a == cname:
+                        continue
+                    if a not in aliases:
+                        aliases.append(a)
                 cmds[cname] = {
                     "script": str(c.get("script", "") or ""),
                     "outputs": outputs,
                     "perm": perm,
+                    "aliases": aliases,
                 }
             groups[gid] = {
                 "aggregate": True,
                 "super_admins": g_super,
-                "vars": {str(k): v for k, v in vars_in.items()},
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
                     for k, v in agg_in.items()
                 },
                 "commands": cmds,
-            }
+            }  # 旧 vars 字段保存时自动丢弃
         return {"script_timeout": timeout, "groups": groups}
 
     async def _save(self) -> bool:
@@ -348,6 +364,21 @@ class GroupVarCommands(Star):
 
     # ---------------- 消息入口 ----------------
 
+    def _trigger_index(self, cmds: dict):
+        """构建触发词表：主名优先；别名与其他主名重复→归主名指令；
+        别名之间重复→后创建的指令(插入顺序靠后)赢。"""
+        trigger = {}
+        for cname in cmds:
+            trigger[cname] = cname
+        for cname, c in cmds.items():
+            for a in (c or {}).get("aliases", []) or []:
+                a = str(a).strip()
+                if not a or a in cmds:
+                    continue
+                trigger[a] = cname  # 同别名后创建者覆盖
+        ordered = sorted(trigger.keys(), key=len, reverse=True)
+        return trigger, ordered
+
     @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
         if not event.is_group():
@@ -363,14 +394,16 @@ class GroupVarCommands(Star):
         text = (event.get_message_str() or "").strip()
         if not text:
             return
-        # 支持两种触发形式：「<指令名> <value>」与「/<指令名> <value>」
+        # 支持两种触发形式：「<指令名/别名> <value>」与「/<指令名/别名> <value>」
         body = text
         if body[:1] in ("/", "／"):
             body = body[1:].lstrip()
-        for name in sorted(cmds.keys(), key=len, reverse=True):
-            if body == name or body.startswith(name + " ") or body.startswith(name + "　"):
-                args = body[len(name):].strip().split()
-                async for r in self._execute(event, cfg, gcfg, name, cmds[name], args):
+        trigger, ordered = self._trigger_index(cmds)
+        for token in ordered:
+            if body == token or body.startswith(token + " ") or body.startswith(token + "　"):
+                args = body[len(token):].strip().split()
+                canonical = trigger[token]
+                async for r in self._execute(event, cfg, gcfg, canonical, cmds[canonical], args, token):
                     yield r
                 return
 
@@ -435,7 +468,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 指令执行 ----------------
 
-    async def _execute(self, event, cfg, gcfg, name, cmd_cfg, args):
+    async def _execute(self, event, cfg, gcfg, name, cmd_cfg, args, triggered=None):
         ok, why = await self._check_perm(event, gcfg, cmd_cfg.get("perm", "member"))
         if not ok:
             yield event.plain_result(f"⛔ {why}")
@@ -454,6 +487,7 @@ class GroupVarCommands(Star):
         kwargs = {
             "args": copy.deepcopy(gcfg.get("groups", {}) or {}),
             "cmd": name,
+            "alias": "" if (triggered is None or triggered == name) else str(triggered),
             "value": " ".join(args),
             "vars": copy.deepcopy(gcfg.get("vars", {}) or {}),
             "sender_id": str(event.sender_id),

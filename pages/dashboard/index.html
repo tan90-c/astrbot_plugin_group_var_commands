@@ -75,13 +75,7 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
   </div>
 
   <div class="card">
-    <h2>群自定义变量（vars）</h2>
-    <div id="varsTable"></div>
-    <div class="row"><button class="btn small" id="btnAddVar">+ 添加变量</button></div>
-  </div>
-
-  <div class="card">
-    <h2>聚合分组</h2>
+    <h2>自定义变量分组</h2>
     <div class="toolbar">
       <select id="aggSelect" style="min-width:180px"></select>
       <input id="newAgg" placeholder="新分组名" style="width:150px" />
@@ -102,7 +96,7 @@ textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;f
       <button class="btn small" id="btnAddCmd">创建指令</button>
       <button class="btn small danger" id="btnDelCmd">删除指令</button>
     </div>
-    <div class="hint" style="margin:8px 0">群成员发送「指令名 值」或「/指令名 值」触发；脚本定义 def main(...)，形参从默认入参（args/cmd/value/vars/…）按名取用，返回 dict。</div>
+    <div class="hint" style="margin:8px 0">群成员发送「指令名/别名 值」或加 / 前缀触发；主指令名唯一，附属指令名（别名）可多个；脚本定义 def main(...)，形参从默认入参（args/cmd/alias/value/…）按名取用，返回 dict。</div>
     <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
   </div>
 

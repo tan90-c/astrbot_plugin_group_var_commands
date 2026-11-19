@@ -14,10 +14,10 @@ const PERM_OPTS = [
 ];
 const PARAM_HINT =
   "默认入参（main 里按名字取用即可，用不到的不写）：\n" +
-  "  args        聚合分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
-  "  cmd         触发的指令名\n" +
+  "  args        自定义变量分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
+  "  cmd         主指令名\n" +
+  "  alias       命中的别名（用主指令名触发时为空串）\n" +
   "  value       指令名后面的参数原文（字符串）\n" +
-  "  vars        群自定义变量字典\n" +
   "  sender_id / sender_name / group_id";
 
 let cfg = { script_timeout: 30, groups: {} };
@@ -65,7 +65,6 @@ function gcur() {
   if (!selGroup) return null;
   const g = cfg.groups[selGroup];
   if (!g) return null;
-  g.vars = g.vars || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
   g.super_admins = g.super_admins || "";
@@ -87,11 +86,11 @@ async function loadCfg() {
   };
   delete cfg.super_admins;
   for (const g of Object.values(cfg.groups)) {
-    g.vars = g.vars || {};
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
     g.super_admins = g.super_admins || "";
+    for (const c of Object.values(g.commands)) c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
   }
   if (!gids().includes(selGroup)) selGroup = gids()[0] || "";
   selCmd = "";
@@ -204,8 +203,6 @@ function renderAll() {
 
   const g = gcur();
 
-  kvTable($("varsTable"), g ? () => g.vars : () => ({}), g ? (d) => { g.vars = d; } : () => {});
-
   const as = $("aggSelect");
   as.innerHTML = "";
   const aggNames = g ? Object.keys(g.groups) : [];
@@ -251,6 +248,7 @@ function renderCmdBody() {
   const c = g.commands[selCmd];
   c.script = c.script || "";
   c.outputs = c.outputs || [];
+  c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
   if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
 
   // 执行权限下拉
@@ -292,6 +290,60 @@ function renderCmdBody() {
     $("dirtyTip").textContent = "● 未保存";
   });
   host.append(lab, ta);
+
+  // 附属指令名（别名）
+  const labAlias = document.createElement("div");
+  labAlias.className = "hint";
+  labAlias.style.marginTop = "12px";
+  labAlias.textContent = "附属指令名（别名，可多个）：发送别名同等于发送主指令名；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效";
+  const tbAl = document.createElement("table");
+  tbAl.innerHTML = "<tr><th>别名</th><th>操作</th></tr>";
+  const alRows = [];
+  c.aliases.forEach((a) => {
+    const tr = document.createElement("tr");
+    const td1 = document.createElement("td");
+    const td2 = document.createElement("td");
+    const ai = document.createElement("input");
+    ai.value = a;
+    ai.placeholder = "别名";
+    const del = document.createElement("button");
+    del.className = "btn small danger";
+    del.textContent = "删除";
+    td1.appendChild(ai);
+    td2.appendChild(del);
+    tr.append(td1, td2);
+    alRows.push({ tr, ai, del });
+    tbAl.appendChild(tr);
+  });
+  const harvestAl = () => {
+    const out = [];
+    for (const r of alRows) {
+      const a = r.ai.value.trim();
+      if (a && !out.includes(a)) out.push(a);
+    }
+    c.aliases = out;
+    markDirty();
+    renderRaw();
+  };
+  tbAl.addEventListener("change", harvestAl);
+  for (const r of alRows) {
+    r.del.onclick = () => {
+      r.tr.remove();
+      alRows.splice(alRows.indexOf(r), 1);
+      harvestAl();
+    };
+  }
+  const btnAddAl = document.createElement("button");
+  btnAddAl.className = "btn small";
+  btnAddAl.style.marginTop = "8px";
+  btnAddAl.textContent = "+ 添加别名";
+  btnAddAl.onclick = () => {
+    c.aliases.push("");
+    markDirty();
+    renderCmdBody();
+    renderRaw();
+  };
+  host.append(labAlias, tbAl, btnAddAl);
 
   // 输出变量表（name/label）
   const labOut = document.createElement("div");
@@ -369,7 +421,7 @@ $("btnAddGroup").onclick = () => {
   const gid = $("newGroup").value.trim();
   if (!gid) return toast("请输入群号", true);
   cfg.groups = cfg.groups || {};
-  cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, super_admins: "", vars: {}, groups: {}, commands: {} };
+  cfg.groups[gid] = cfg.groups[gid] || { aggregate: true, super_admins: "", groups: {}, commands: {} };
   selGroup = gid;
   $("newGroup").value = "";
   markDirty();
@@ -446,11 +498,6 @@ $("btnAddAggKv").onclick = () => {
   if (!g || !selAgg) return toast("请先选择分组", true);
   addKvRow($("aggTable"), () => g.groups[selAgg], (d) => { g.groups[selAgg] = d; });
 };
-$("btnAddVar").onclick = () => {
-  const g = gcur();
-  if (!g) return toast("请先选择群", true);
-  addKvRow($("varsTable"), () => g.vars, (d) => { g.vars = d; });
-};
 $("cmdSelect").addEventListener("change", (e) => {
   selCmd = e.target.value;
   renderCmdBody();
@@ -462,7 +509,7 @@ $("btnAddCmd").onclick = () => {
   if (!n) return toast("请输入指令名", true);
   if (/\s/.test(n)) return toast("指令名不能含空格", true);
   if (g.commands[n]) return toast("指令已存在", true);
-  g.commands[n] = { script: "", outputs: [], perm: "member" };
+  g.commands[n] = { script: "", outputs: [], perm: "member", aliases: [] };
   selCmd = n;
   $("newCmd").value = "";
   markDirty();
@@ -502,15 +549,16 @@ $("btnRawApply").onclick = () => {
     groups: data.groups,
   };
   for (const g of Object.values(cfg.groups)) {
-    g.vars = g.vars || {};
     g.groups = g.groups || {};
     g.commands = g.commands || {};
     g.aggregate = true;
     g.super_admins = Array.isArray(g.super_admins)
       ? g.super_admins.join(",")
       : g.super_admins || "";
+    delete g.vars;
     for (const c of Object.values(g.commands)) {
       delete c.inputs;
+      c.aliases = Array.isArray(c.aliases) ? c.aliases : [];
       if (!PERM_OPTS.some((p) => p[0] === c.perm)) c.perm = "member";
     }
   }

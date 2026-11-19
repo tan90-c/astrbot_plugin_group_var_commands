@@ -5,9 +5,9 @@
     "default": 30
   },
   "groups": {
-    "description": "按群号配置：群号 -> {super_admins, vars, groups, commands}",
+    "description": "按群号配置：群号 -> {super_admins, groups, commands}",
     "type": "dict",
     "default": {},
-    "hint": "super_admins=本群超级管理员QQ逗号分隔(不跨群)；vars=群自定义变量(键值对)；groups=聚合分组(分组名->键值对)；commands.<指令名> 含 script(Python源码,main 形参从默认入参 args/cmd/value/vars/sender_id/sender_name/group_id 按名取用,返回 dict)、outputs(输出变量列表)与 perm(member/admin/owner/super)。建议通过 WebUI 控制面板编辑，结构详见 README。"
+    "hint": "super_admins=本群超级管理员QQ逗号分隔(不跨群)；groups=自定义变量分组(分组名->键值对)；commands.<指令名> 含 script(形参从 args/cmd/alias/value/sender_id/sender_name/group_id 按名取用,返回 dict)、outputs、perm(member/admin/owner/super)、aliases(附属指令名数组)。建议用 WebUI 控制面板编辑，详见 README。"
   }
 }
