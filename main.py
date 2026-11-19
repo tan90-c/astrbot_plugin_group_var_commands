@@ -91,6 +91,7 @@ def _build_all_message_filter():
     )
 
 _ALL_MESSAGE = _build_all_message_filter()
+_EM_RESOLVED = getattr(filter, "EventMessageType", None) is not None
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
 # 别名模板占位：任意成对花括号组（{*} / {value} / {二服} …）统一当通配捕获
@@ -121,7 +122,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.1.1",
+    "1.1.2",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -533,6 +534,10 @@ class GroupVarCommands(Star):
 
     @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
+      try:
+        dbg = bool(os.environ.get("GVC_DEBUG"))
+        if dbg and not _EM_RESOLVED:
+            logger.warning(f"[{PLUGIN_ID}] GVC_DEBUG: EventMessageType 未解析，全量消息钩子可能根本不会触发")
         group_id = self._group_id(event)
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         # 会话键：umo 优先，退化为群号/私聊对端 id
@@ -543,22 +548,33 @@ class GroupVarCommands(Star):
         groups = cfg.get("groups", {}) or {}
         gcfg = groups.get(key)
         await self._record_session(event, key, group_id)
+        if dbg:
+            logger.info(f"[{PLUGIN_ID}] DBG in: key={key!r} bound={key in groups} msg={self._plain_text(event)!r} raw={event.get_message_str()!r}")
         if not gcfg:
+            if dbg:
+                logger.info(f"[{PLUGIN_ID}] DBG: key={key!r} 未绑定任何配置（现有键: {list(groups)[:6]}）")
             return
         bind = str(gcfg.get("bind", "") or "").strip()
         if bind:
-            gcfg = groups.get(bind) or {}
+            master = groups.get(bind)
+            if not master:
+                logger.warning(f"[{PLUGIN_ID}] 会话 {key} 绑定的主会话 {bind!r} 不存在，指令已全部失效（静默）。请解绑或改绑")
+            gcfg = master or {}
         cmds = gcfg.get("commands", {})
         if not cmds:
             return
         text = self._plain_text(event).strip()
         if not text:
+            if dbg:
+                logger.info(f"[{PLUGIN_ID}] DBG: 剥离组件后文本为空 raw={event.get_message_str()!r}")
             return
         # 支持两种触发形式：「<指令名/别名> <value>」与「/<指令名/别名> <value>」
         body = text
         if body[:1] in ("/", "／"):
             body = body[1:].lstrip()
         trigger_entries = self._trigger_index(cmds)
+        if dbg:
+            logger.info(f"[{PLUGIN_ID}] DBG body={body!r} entries={[(t, k) for t, _, k, _ in trigger_entries]}")
         tokens = body.split()
         for tok, canon, kind, pat in trigger_entries:
             if kind == "fixed":
@@ -580,6 +596,10 @@ class GroupVarCommands(Star):
                         async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
                             yield r
                         return
+        if dbg:
+            logger.info(f"[{PLUGIN_ID}] DBG: 未命中任何触发词 body={body!r}")
+      except Exception:
+        logger.exception(f"[{PLUGIN_ID}] on_message 内部异常（请反馈此堆栈）")
 
     # ---------------- 指令执行 ----------------
 
