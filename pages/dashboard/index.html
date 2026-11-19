@@ -5,19 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>群变量指令控制面板</title>
 <style>
-:root{--bg:#f5f6fa;--card:#fff;--text:#1a1a2e;--muted:#6b7280;--border:#e5e7eb;--primary:#4f6ef2;--primary-dark:#3b57d9;--green:#10b981;--red:#ef4444;--radius:12px;}
-[data-theme="dark"]{--bg:#14151f;--card:#1e1f2c;--text:#e6e6ee;--muted:#9ca3af;--border:#2c2d3d;--primary:#6b86f5;--primary-dark:#5773e8;}
+:root{--bg:#f5f6fa;--card:#fff;--text:#1a1a2e;--muted:#6b7280;--border:#e5e7eb;--primary:#4f6ef2;--primary-dark:#3b57d9;--green:#10b981;--red:#ef4444;--radius:12px;--sb:#f7f8fb;}
+[data-theme="dark"]{--bg:#14151f;--card:#1e1f2c;--text:#e6e6ee;--muted:#9ca3af;--border:#2c2d3d;--primary:#6b86f5;--primary-dark:#5773e8;--sb:#191a26;}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6;padding:20px 16px 60px}
-.container{max-width:980px;margin:0 auto}
-h1{font-size:20px;margin:0 0 4px}
-.sub{color:var(--muted);font-size:12px;margin-bottom:16px}
-.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
-.card h2{font-size:15px;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;outline:none}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6;font-size:13px}
+.layout{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:270px;min-width:220px;background:var(--sb);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sb-top{display:flex;gap:6px;padding:10px;border-bottom:1px solid var(--border)}
+.sb-top input{flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;outline:none;font-size:12px}
+.icon-btn{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;width:32px;cursor:pointer;font-size:15px}
+.tablist{flex:1;overflow-y:auto;padding:6px}
+.tab{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;cursor:pointer;margin-bottom:2px}
+.tab:hover{background:rgba(128,128,128,.12)}
+.tab.active{background:var(--primary);color:#fff}
+.tab .avatar{width:36px;height:36px;border-radius:9px;background:#f0a92e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.tab.home .avatar{background:var(--primary)}
+.tab .meta{flex:1;min-width:0}
+.tab .tname{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab .tsub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab.active .tsub{color:rgba(255,255,255,.8)}
+.main{flex:1;overflow-y:auto;padding:18px 22px 60px}
+.main h1{font-size:18px;margin:0 0 2px}
+.sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;max-width:940px}
+.card h2{font-size:14px;margin:0 0 10px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.ghead{display:flex;align-items:center;gap:10px;max-width:940px;margin-bottom:12px}
+.ghead h1{flex:1}
+input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12px;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--primary)}
-textarea.script{width:100%;min-height:220px;font-family:Consolas,Menlo,monospace;font-size:12px;resize:vertical}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+th,td{padding:5px 7px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+th{color:var(--muted);font-size:11px;font-weight:600}
+td input,td select{width:100%}
+.btn{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer}
+.btn:hover{background:var(--primary-dark)}
+.btn.secondary{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:var(--red)}
+.btn.small{padding:3px 10px;font-size:11px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hint{font-size:11px;color:var(--muted)}
+.dirty{color:#f59e0b;font-size:11px;font-weight:600}
+.empty{color:var(--muted);font-size:12px;padding:6px 0}
+textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;font-size:12px}
+.paramhint{white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:11px}
 .codebox{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px;background:var(--bg)}
 .codebox .bar{display:flex;justify-content:space-between;align-items:center;padding:4px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);background:var(--card)}
 .codebox .body{display:flex;position:relative;min-height:220px;max-height:420px}
@@ -25,103 +57,95 @@ textarea.script{width:100%;min-height:220px;font-family:Consolas,Menlo,monospace
 .codebox .wrap{position:relative;flex:1;overflow:hidden}
 .codebox pre.hl,.codebox textarea.input{position:absolute;inset:0;margin:0;padding:10px 12px;font:12px/1.55 Consolas,Menlo,monospace;white-space:pre;overflow:auto;border:0}
 .codebox pre.hl{pointer-events:none;color:var(--text)}
-.codebox textarea.input{background:transparent;color:transparent;caret-color:var(--text);resize:none;outline:none;overflow:auto}
+.codebox textarea.input{background:transparent;color:transparent;caret-color:var(--text);resize:none;outline:none}
 .codebox .k{color:#569cd6}.codebox .s{color:#ce9178}.codebox .c{color:#57a64a}.codebox .n{color:#b5cea8}.codebox .d{color:#c586c0}
 [data-theme="dark"] .codebox .k{color:#7aa6dc}[data-theme="dark"] .codebox .d{color:#d1a3e0}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
-th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
-th{color:var(--muted);font-size:12px;font-weight:600}
-td input,td select{width:100%}
-.btn{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer}
-.btn:hover{background:var(--primary-dark)}
-.btn.secondary{background:var(--bg);color:var(--text);border:1px solid var(--border)}
-.btn.danger{background:var(--red)}
-.btn.small{padding:3px 10px;font-size:12px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-.hint{font-size:12px;color:var(--muted)}
-.dirty{color:#f59e0b;font-size:12px;font-weight:600}
-#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;opacity:0;transition:opacity .3s;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw}
+#toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:12px;opacity:0;transition:opacity .3s;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw}
 #toast.show{opacity:1}
-.empty{color:var(--muted);font-size:13px;padding:8px 0}
-textarea.json{width:100%;min-height:180px;font-family:Consolas,Menlo,monospace;font-size:12px}
-.switch{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px}
-.paramhint{white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px}
 #modalMask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:center;justify-content:center}
-#modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;max-width:420px;width:88vw;box-shadow:0 12px 32px rgba(0,0,0,.3)}
-#modalMsg{font-size:14px;margin-bottom:16px;white-space:pre-wrap}
+#modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;max-width:420px;width:88vw;box-shadow:0 12px 32px rgba(0,0,0,.3)}
+#modalMsg{font-size:13px;margin-bottom:14px;white-space:pre-wrap}
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>群变量指令控制面板</h1>
-  <div class="sub">按群管理变量 / 聚合分组 / 自定义指令脚本，修改后点击「保存配置」写入服务器</div>
-
-  <div class="card">
-    <h2>群与全局</h2>
-    <div class="toolbar">
-      <select id="groupSelect" style="min-width:220px"></select>
-      <span style="flex:1"></span>
-      <span class="dirty" id="dirtyTip"></span>
-      <button class="btn small secondary" id="btnReload">重新加载</button>
-      <button class="btn" id="btnSave">保存配置</button>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sb-top">
+      <input id="searchBox" placeholder="搜索" />
+      <button class="icon-btn" id="btnGoHome" title="首页：绑定新群会话">＋</button>
     </div>
-    <div class="row">
-      <span class="hint">群会话</span>
-      <select id="sessionSelect" style="flex:1;min-width:260px"></select>
-      <button class="btn small" id="btnAddFromSession">添加并绑定会话</button>
-      <button class="btn small secondary" id="btnRefreshSessions">刷新会话列表</button>
+    <div class="tablist" id="tabList"></div>
+  </aside>
+  <main class="main">
+    <div id="homeView">
+      <h1>首页</h1>
+      <div class="sub">绑定群会话即新增标签页，所有修改自动保存</div>
+      <div class="card">
+        <h2>添加群（绑定会话）</h2>
+        <div class="toolbar">
+          <select id="sessionSelect" style="flex:1;min-width:260px"></select>
+          <button class="btn small" id="btnAddFromSession">添加并绑定会话</button>
+          <button class="btn small secondary" id="btnRefreshSessions">刷新会话列表</button>
+        </div>
+        <div class="hint" style="margin-top:6px">机器人所在群发过一条消息后会出现在列表里（仅支持 QQ 官方机器人平台）</div>
+      </div>
+      <div class="card">
+        <h2>全局设置</h2>
+        <div class="row">
+          <span class="hint">脚本执行超时（秒）</span>
+          <input id="scriptTimeout" type="number" min="1" max="600" style="width:100px" />
+          <span class="hint">1-600，修改即保存</span>
+          <span style="flex:1"></span>
+          <span class="dirty" id="dirtyTip"></span>
+          <button class="btn small secondary" id="btnReload">重新加载</button>
+        </div>
+      </div>
     </div>
-    <div class="hint">机器人所在群发过一条消息后会出现在列表里（仅支持 QQ 官方机器人平台）</div>
-    <div class="row">
-      <span class="hint">脚本执行超时（秒）</span>
-      <input id="scriptTimeout" type="number" min="1" max="600" style="width:100px" />
-      <span class="hint">1-600</span>
-    </div>
-    <details>
-      <summary class="hint">高级：手动输入会话来源(umo)</summary>
-      <div class="row">
-        <input id="newGroup" placeholder="会话来源 umo（一般通过上方会话列表绑定，无需手填）" style="width:320px" />
-        <button class="btn small" id="btnAddGroup">添加群</button>
-        <button class="btn small secondary" id="btnAddGroupCopy" title="新建并复制当前选中群的分组/指令配置">添加并复制当前配置</button>
+    <div id="groupView" style="display:none">
+      <div class="ghead">
+        <h1 id="gTitle">群配置</h1>
         <button class="btn small danger" id="btnDelGroup">删除当前群</button>
       </div>
-    </details>
-  </div>
-
-  <div class="card">
-    <h2>自定义变量分组</h2>
-    <div class="toolbar">
-      <select id="aggSelect" style="min-width:180px"></select>
-      <input id="newAgg" placeholder="分组名" style="width:150px" />
-      <button class="btn small" id="btnAddAgg">添加分组</button>
-      <button class="btn small secondary" id="btnRenameAgg">改名当前分组</button>
-      <button class="btn small danger" id="btnDelAgg">删除分组</button>
+      <div class="card">
+        <h2>自定义变量分组</h2>
+        <div class="toolbar">
+          <select id="aggSelect" style="min-width:180px"></select>
+          <input id="newAgg" placeholder="分组名" style="width:150px" />
+          <button class="btn small" id="btnAddAgg">添加分组</button>
+          <button class="btn small secondary" id="btnRenameAgg">改名当前分组</button>
+          <button class="btn small danger" id="btnDelAgg">删除分组</button>
+        </div>
+        <div id="aggTable"></div>
+        <div class="row"><button class="btn small" id="btnAddAggKv">+ 添加变量</button></div>
+      </div>
+      <div class="card">
+        <h2>自定义指令</h2>
+        <div class="toolbar">
+          <select id="cmdSelect" style="min-width:180px"></select>
+          <input id="newCmd" placeholder="新指令名" style="width:150px" />
+          <button class="btn small" id="btnAddCmd">创建指令</button>
+          <button class="btn small danger" id="btnDelCmd">删除指令</button>
+        </div>
+        <div class="hint" style="margin:8px 0">群成员发送「指令名/别名 值」或加 / 前缀触发；别名可多个且支持 {*} 模板（如 查{*}玩家）；脚本 def main(...) 取默认入参（args/cmd/alias/value/…），返回值转字符串直接回复，报错时静默。</div>
+        <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
+      </div>
+      <div class="card">
+        <h2>高级：完整 JSON（当前群）</h2>
+        <textarea id="rawJson" class="json" spellcheck="false"></textarea>
+        <div class="row">
+          <button class="btn small secondary" id="btnRawRefresh">从当前页面刷新</button>
+          <button class="btn small" id="btnRawApply">应用并保存</button>
+        </div>
+        <div class="row" style="border-top:1px dashed var(--border);padding-top:10px;margin-top:10px">
+          <span class="hint">从已有标签复制</span>
+          <select id="copyFromSelect" style="min-width:220px"></select>
+          <button class="btn small secondary" id="btnCopyVars">复制变量分组</button>
+          <button class="btn small secondary" id="btnCopyCmds">复制指令</button>
+          <button class="btn small" id="btnCopyAll">复制全部</button>
+        </div>
+      </div>
     </div>
-    <div id="aggTable"></div>
-    <div class="row"><button class="btn small" id="btnAddAggKv">+ 添加变量</button></div>
-  </div>
-
-  <div class="card">
-    <h2>自定义指令（commands）</h2>
-    <div class="toolbar">
-      <select id="cmdSelect" style="min-width:180px"></select>
-      <input id="newCmd" placeholder="新指令名" style="width:150px" />
-      <button class="btn small" id="btnAddCmd">创建指令</button>
-      <button class="btn small danger" id="btnDelCmd">删除指令</button>
-    </div>
-    <div class="hint" style="margin:8px 0">群成员发送「指令名/别名 值」或加 / 前缀触发；主指令名唯一，别名可多个且支持 {*} 模板（如 查{*}玩家）；脚本 def main(...) 取默认入参（args/cmd/alias/value/…），返回值转字符串直接回复，报错时静默。</div>
-    <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
-  </div>
-
-  <div class="card">
-    <h2>高级：完整 JSON</h2>
-    <textarea id="rawJson" class="json" spellcheck="false"></textarea>
-    <div class="row">
-      <button class="btn small secondary" id="btnRawRefresh">从当前页面刷新</button>
-      <button class="btn small" id="btnRawApply">应用 JSON 到页面</button>
-      <span class="hint">应用后仍需点击「保存配置」写入服务器</span>
-    </div>
-  </div>
+  </main>
 </div>
 <div id="toast"></div>
 <div id="modalMask"><div id="modal"><div id="modalMsg"></div><div class="row" style="justify-content:flex-end"><button class="btn small secondary" id="modalNo">取消</button><button class="btn small" id="modalYes">确定</button></div></div></div>
