@@ -93,6 +93,7 @@ function gcur() {
   if (!selGroup) return null;
   const g = cfg.groups[selGroup];
   if (!g) return null;
+  g.note = typeof g.note === "string" ? g.note : "";
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
@@ -100,6 +101,7 @@ function gcur() {
 }
 
 function normGroup(g) {
+  g.note = typeof g.note === "string" ? g.note : "";
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
@@ -369,10 +371,11 @@ function renderSidebar() {
   });
   for (const key of gids()) {
     const info = gkeyInfo(key);
-    if (kw && !info.name.toLowerCase().includes(kw) && !key.toLowerCase().includes(kw)) continue;
     const g = cfg.groups[key];
+    const disp = (g && g.note) || info.name;
     const nCmd = Object.keys((g && g.commands) || {}).length;
-    mk("", info.type === "private" ? "💬" : "🤖", info.name, `${nCmd} 条指令 · ${info.sub}`, selGroup === key, () => {
+    if (kw && !disp.toLowerCase().includes(kw) && !info.name.toLowerCase().includes(kw) && !key.toLowerCase().includes(kw)) continue;
+    mk("", info.type === "private" ? "💬" : "🤖", disp, `${nCmd} 条指令 · ${info.sub}`, selGroup === key, () => {
       selGroup = key; selCmd = ""; selAgg = ""; selMod = ""; renderAll();
     });
   }
@@ -384,7 +387,9 @@ function renderViews() {
   if (!selGroup) return;
   const g = gcur();
   if (!g) { selGroup = ""; renderAll(); return; }
+  const g0 = gcur();
   $("gTitle").textContent = gkeyInfo(selGroup).name;
+  $("groupNote").value = g0 ? g0.note : "";
 }
 
 function renderAll() {
@@ -603,6 +608,16 @@ $("btnAddFromSession").onclick = async () => {
   renderAll();
 };
 
+$("groupNote").addEventListener("change", async (e) => {
+  const g = gcur();
+  if (!g) return;
+  g.note = e.target.value.trim();
+  markDirty();
+  renderSidebar();
+  renderRaw();
+  await saveNow(true);
+  toast(g.note ? `备注已保存：${g.note}` : "备注已清空");
+});
 $("btnDelGroup").onclick = async () => {
   if (!selGroup) return;
   const info = gkeyInfo(selGroup);

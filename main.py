@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 """
-AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
+AstrBot 插件：自定义函数指令 (astrbot_plugin_group_var_commands)
 
 配置方式（两种，等价）：
 1. WebUI 控制页面（推荐）：插件详情页 → 「群变量指令 · 控制面板」可视化编辑
@@ -9,6 +9,7 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 
 配置结构（groups 的键 = 会话来源 umo，群聊与私聊均可绑定，面板“绑定会话”自动填写）：
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
+- groups.<会话>.note      备注名（面板左侧列表显示用，可空）
 - groups.<会话>.modules   全局函数模块（模块名 -> Python 源码，指令脚本 import 即用）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
@@ -116,8 +117,8 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
 @register(
     PLUGIN_ID,
     "tan90-c",
-    "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.5.0",
+    "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
+    "1.0.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -207,6 +208,9 @@ class GroupVarCommands(Star):
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
             mods_in = g.get("modules", {}) or {}
+            note = g.get("note", "") or ""
+            if not isinstance(note, str):
+                raise ValueError(f"会话 {gid} 的备注名必须是字符串")
             if not isinstance(mods_in, dict):
                 raise ValueError(f"群 {gid} 的 modules 必须是对象（模块名 -> Python 源码）")
             modules: dict = {}
@@ -251,6 +255,7 @@ class GroupVarCommands(Star):
                 }
             groups[gid] = {
                 "aggregate": True,
+                "note": note.strip(),
                 "modules": modules,
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})
