@@ -7,13 +7,13 @@ AstrBot 插件：群变量指令 (astrbot_plugin_group_var_commands)
 1. WebUI 控制页面（推荐）：插件详情页 → 「群变量指令 · 控制面板」可视化编辑
 2. 直接编辑 data/config/ 下的插件设置 JSON
 
-配置结构（groups 的键 = 会话来源 umo，面板“绑定会话”自动填写）：
+配置结构（groups 的键 = 会话来源 umo，群聊与私聊均可绑定，面板“绑定会话”自动填写）：
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
 仅支持 QQ 官方机器人平台（qq_official / qq_official_webhook）；不兼容旧版配置字段。
 
-群成员发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
+群成员或私聊对象发送「<指令名或别名> <value>」或「/<指令名或别名> <value>」即执行对应 Python
 脚本的 main() 函数。触发优先级：主指令名 > 别名；别名同主名重复→调主名指令；
 别名间重复→后创建的指令赢。默认入参（main 按名取用，RUNNER 自动过滤）：
   args        自定义变量分组字典：{分组名: {变量名: 值}}
@@ -115,7 +115,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "按群配置变量/聚合分组，自定义指令绑定 Python 脚本执行，带 WebUI 控制面板",
-    "2.2.1",
+    "2.3.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -272,6 +272,8 @@ class GroupVarCommands(Star):
 
     async def web_get_sessions(self):
         items = sorted(self._sessions.values(), key=lambda x: x.get("last_seen", 0), reverse=True)
+        for x in items:
+            x.setdefault("type", "group")
         return json_response({"sessions": items})
 
     # ---------------- 已见群会话记录 ----------------
@@ -309,9 +311,9 @@ class GroupVarCommands(Star):
         except Exception as e:
             logger.warning(f"[{PLUGIN_ID}] 会话缓存保存失败: {e}")
 
-    async def _record_session(self, event, gid: str):
+    async def _record_session(self, event, key: str, gid: str = ""):
         now = time.time()
-        old = self._sessions.get(gid)
+        old = self._sessions.get(key)
         if old and old.get("group_name") and now - float(old.get("last_seen", 0)) < 3600:
             return
         try:
@@ -320,22 +322,30 @@ class GroupVarCommands(Star):
                 platform = event.get_platform_name() or ""
             except Exception:
                 pass
+            is_group = bool(gid)
             name = ""
-            try:
-                grp = await event.get_group()
-                if grp is not None:
-                    name = str(getattr(grp, "group_name", "") or getattr(grp, "name", "") or "")
-            except Exception:
-                pass
+            if is_group:
+                try:
+                    grp = await event.get_group()
+                    if grp is not None:
+                        name = str(getattr(grp, "group_name", "") or getattr(grp, "name", "") or "")
+                except Exception:
+                    pass
+            else:
+                try:
+                    name = event.get_sender_name() or ""
+                except Exception:
+                    pass
             entry = {
                 "umo": str(getattr(event, "unified_msg_origin", "") or ""),
-                "group_id": gid,
-                "group_name": name or (old or {}).get("group_name") or gid,
+                "group_id": gid or self._chat_id(event),
+                "group_name": name or (old or {}).get("group_name") or key.split(":")[-1],
                 "platform": platform or (old or {}).get("platform", ""),
+                "type": "group" if is_group else "private",
                 "last_seen": int(now),
             }
             if entry != old:
-                self._sessions[gid] = entry
+                self._sessions[key] = entry
                 self._save_sessions()
         except Exception as e:
             logger.debug(f"[{PLUGIN_ID}] 记录会话失败: {e}")
@@ -437,17 +447,31 @@ class GroupVarCommands(Star):
         entries.sort(key=lambda e: (len(e[0].replace("{*}", "")), "{*}" not in e[0]), reverse=True)
         return entries
 
+    @staticmethod
+    def _chat_id(event) -> str:
+        """私聊会话的对端标识（openid 等）"""
+        sid = ""
+        try:
+            sid = event.get_sender_id() or ""
+        except Exception:
+            sid = ""
+        if not sid:
+            sender = getattr(getattr(event, "message_obj", None), "sender", None)
+            sid = str(getattr(sender, "user_id", "") or "")
+        return sid
+
     @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
         group_id = self._group_id(event)
-        if not group_id:
+        umo = str(getattr(event, "unified_msg_origin", "") or "")
+        # 会话键：umo 优先，退化为群号/私聊对端 id
+        key = umo or group_id or self._chat_id(event)
+        if not key:
             return
         cfg = self._cfg()
         groups = cfg.get("groups", {}) or {}
-        umo = str(getattr(event, "unified_msg_origin", "") or "")
-        # 仅按会话来源(umo)匹配
-        gcfg = groups.get(umo)
-        await self._record_session(event, group_id)
+        gcfg = groups.get(key)
+        await self._record_session(event, key, group_id)
         if not gcfg:
             return
         cmds = gcfg.get("commands", {})

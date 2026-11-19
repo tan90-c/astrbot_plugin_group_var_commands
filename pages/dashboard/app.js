@@ -79,10 +79,11 @@ function gids() {
 
 function gkeyInfo(key) {
   const tail = key.includes(":") ? key.split(":").pop() : key;
-  const s = sessions.find((x) => x.group_id === tail || x.umo === key);
+  const s = sessions.find((x) => x.umo === key || x.group_id === tail);
   return {
     name: (s && s.group_name) || tail || key,
     sub: s && s.platform ? s.platform : key,
+    type: s && s.type ? s.type : "group",
   };
 }
 
@@ -129,7 +130,8 @@ async function loadSessions() {
   }
   for (const x of sessions) {
     const bound = gids().includes(x.umo || x.group_id) ? "（已绑定）" : "";
-    sel.appendChild(new Option(`${x.group_name || x.group_id}（${x.platform || "?"}）${bound}`, x.group_id));
+    const ic = x.type === "private" ? "💬私聊" : "🤖群聊";
+    sel.appendChild(new Option(`${ic} ${x.group_name || x.group_id}（${x.platform || "?"}）${bound}`, x.group_id));
   }
 }
 
@@ -366,7 +368,7 @@ function renderSidebar() {
     if (kw && !info.name.toLowerCase().includes(kw) && !key.toLowerCase().includes(kw)) continue;
     const g = cfg.groups[key];
     const nCmd = Object.keys((g && g.commands) || {}).length;
-    mk("", "🤖", info.name, `${nCmd} 条指令 · ${info.sub}`, selGroup === key, () => {
+    mk("", info.type === "private" ? "💬" : "🤖", info.name, `${nCmd} 条指令 · ${info.sub}`, selGroup === key, () => {
       selGroup = key; selCmd = ""; selAgg = ""; renderAll();
     });
   }
