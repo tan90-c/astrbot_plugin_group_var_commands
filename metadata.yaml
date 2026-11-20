@@ -8,6 +8,12 @@ astrbot_version: ">=4.9.2"
 support_platforms:
   - qq_official
   - qq_official_webhook
+social_link: https://github.com/tan90-c
+tags:
+  - 群指令
+  - python脚本
+  - webui面板
+  - qq官方机器人
 
 
 
