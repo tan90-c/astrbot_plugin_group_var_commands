@@ -54,7 +54,7 @@ def main(args, cmd, alias, value):
 输出规则：
 
 1. 返回值转字符串直接作为回复：`str` 原样、`dict`/`list` 转 JSON、`None`/空不回复
-2. 脚本内 `print` 的内容附在返回值前（分隔线隔开）
+2. 脚本内 `print(...)` 的内容会随回复一起输出（附在返回值之前）——调试信息、异常内容都可以用 `print` 直接打到机器人回复里查看，例如 `print(变量)` 快速确认脚本读到了什么
 3. 脚本报错/超时静默无回复，仅记后端日志，不影响机器人运行
 4. 回复格式可在首页切换：markdown 卡片 / 纯文本（强制 msg_type=0，PC 端 QQ 推荐）
 
@@ -69,13 +69,6 @@ def main(args, cmd, alias, value):
 1. 面板所有修改写入 `data/config/astrbot_plugin_group_var_commands_config.json`，结构为 `script_timeout / reply_format / groups.<会话umo>.{note, bind, bind_mode, var_notes, modules, groups, commands}`（bind 非空=跟随该主会话；bind_mode=code 时仅函数与指令跟随；var_notes=变量说明 {分组名:{键:说明}}）
 2. 高级 JSON 区实时展示当前会话完整配置（自动与页面同步），粘贴新 JSON 可一键导入覆盖；「复制全部」从其他标签深拷贝变量分组+函数模块+指令；「绑定会话」把当前标签挂到所选主会话（只读跟随），按钮变「解绑会话」
 3. 机器人见过的会话记录缓存于 `data/plugin_data/astrbot_plugin_group_var_commands/sessions.json`（仅用于面板展示选择）
-
-## 排障
-
-1. 指令不触发：重启 AstrBot 时设置环境变量 `GVC_DEBUG=1`，群里发一条测试消息，后台日志会出现 `[astrbot_plugin_group_var_commands] DBG` 行，依次显示：事件算出的会话键、是否已绑定、剥离 @ 组件后的文本、触发词表、命中/未命中原因；对照配置即可定位（最常见：会话键不匹配、绑定会话的主会话已删除）
-2. 绑定会话不生效：主会话被删除时日志有常驻 WARN「绑定的主会话不存在」，面板横幅同步提示，解绑或改绑即可
-3. 脚本报错/超时：默认静默无回复，错误详情在后台日志 `指令 X 执行出错` 行；先确认回复格式已切纯文本再看内容问题
-4. 重载/更新后配置丢失：确认字段存在于 `_conf_schema.json`（不在 schema 的顶层字段会被重建丢弃）
 
 ## 安全须知
 

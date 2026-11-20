@@ -93,7 +93,6 @@ def _build_all_message_filter():
     )
 
 _ALL_MESSAGE = _build_all_message_filter()
-_EM_RESOLVED = getattr(filter, "EventMessageType", None) is not None
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
 # 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
@@ -121,7 +120,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.0.1",
+    "1.0.2",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -560,9 +559,6 @@ class GroupVarCommands(Star):
     @_ALL_MESSAGE
     async def on_message(self, event: AstrMessageEvent):
       try:
-        dbg = bool(os.environ.get("GVC_DEBUG"))
-        if dbg and not _EM_RESOLVED:
-            logger.warning(f"[{PLUGIN_ID}] GVC_DEBUG: EventMessageType 未解析，全量消息钩子可能根本不会触发")
         group_id = self._group_id(event)
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         # 会话键：umo 优先，退化为群号/私聊对端 id
@@ -573,11 +569,7 @@ class GroupVarCommands(Star):
         groups = cfg.get("groups", {}) or {}
         gcfg = groups.get(key)
         await self._record_session(event, key, group_id)
-        if dbg:
-            logger.info(f"[{PLUGIN_ID}] DBG in: key={key!r} bound={key in groups} msg={self._plain_text(event)!r} raw={event.get_message_str()!r}")
         if not gcfg:
-            if dbg:
-                logger.info(f"[{PLUGIN_ID}] DBG: key={key!r} 未绑定任何配置（现有键: {list(groups)[:6]}）")
             return
         bind = str(gcfg.get("bind", "") or "").strip()
         if bind:
@@ -599,24 +591,18 @@ class GroupVarCommands(Star):
             return
         text = self._plain_text(event).strip()
         if not text:
-            if dbg:
-                logger.info(f"[{PLUGIN_ID}] DBG: 剥离组件后文本为空 raw={event.get_message_str()!r}")
             return
         # 支持两种触发形式：「<指令名/别名> <value>」与「/<指令名/别名> <value>」
         body = text
         if body[:1] in ("/", "／"):
             body = body[1:].lstrip()
         trigger_entries = self._trigger_index(cmds)
-        if dbg:
-            logger.info(f"[{PLUGIN_ID}] DBG body={body!r} entries={trigger_entries[:8]}")
         for tok, canon in trigger_entries:
             if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
                 value_list = body[len(tok):].split()
                 async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
                     yield r
                 return
-        if dbg:
-            logger.info(f"[{PLUGIN_ID}] DBG: 未命中任何触发词 body={body!r}")
       except Exception:
         logger.exception(f"[{PLUGIN_ID}] on_message 内部异常（请反馈此堆栈）")
 
