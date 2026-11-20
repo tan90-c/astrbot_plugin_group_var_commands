@@ -13,7 +13,8 @@ const PARAM_HINT =
   "  alias       命中的别名（用主指令名触发时为空串）\n" +
   "  value       参数列表：触发词后的内容按空格拆分，如 \"状态 1区 2区\" → value=[\"1区\", \"2区\"]\n" +
   "  user_id     发言人唯一ID（QQ官方机器人为member_openid加密串，同机器人内稳定）\n" +
-  "全局函数模块：脚本顶部 import 模块名 或 from 模块名 import 函数，直接调用";
+  "全局函数模块：脚本顶部 import 模块名 或 from 模块名 import 函数，直接调用\n" +
+  "持久存储：import store → store.load()/store.save(d)（默认按会话ID建文件；store.load(name=\"用途\") 可另开独立文件；跨重启保留）";
 
 let cfg = { script_timeout: 30, reply_format: "markdown", groups: {} };
 let sessions = [];

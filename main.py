@@ -97,6 +97,61 @@ _ALL_MESSAGE = _build_all_message_filter()
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
 # 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
+# 内置持久存储模块：指令脚本 `import store` 即用（数据存 data/plugin_data/ 下，跨重启/更新保留）
+STORE_MODULE = r'''
+import json, os, re, tempfile as _tmp
+
+def _root():
+    d = os.environ.get("GVC_STORE_DIR") or os.path.join(os.path.expanduser("~"), ".gvc_store")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+def _slug(x):
+    return re.sub(r"[^\w.-]", "_", str(x))[:80]
+
+def path(name=None):
+    """存储文件完整路径。name=None 用当前会话 ID 命名；指定 name 则同一会话下另开一份文件。"""
+    sid = _slug(os.environ.get("GVC_SESSION_ID") or "default")
+    fn = sid + ".json" if not name else sid + "__" + _slug(name) + ".json"
+    return os.path.join(_root(), fn)
+
+def load(default=None, name=None):
+    """读存储（文本 JSON config）。不存在/损坏返回 default（缺省 {}）。"""
+    try:
+        with open(path(name), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {} if default is None else default
+
+def save(data, name=None):
+    """原子写回存储（先写临时文件再 replace，不怕写一半崩）。返回文件路径。"""
+    p = path(name)
+    fd, t = _tmp.mkstemp(dir=os.path.dirname(p), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(t, p)
+    except Exception:
+        try:
+            os.unlink(t)
+        except Exception:
+            pass
+        raise
+    return p
+
+def delete(name=None):
+    """删除存储文件（不存在静默）。"""
+    try:
+        os.remove(path(name))
+    except FileNotFoundError:
+        pass
+    except Exception:
+        raise
+
+def exists(name=None):
+    return os.path.isfile(path(name))
+'''
+
 RUNNER = r"""
 import inspect, json, os, sys, importlib.util
 spec = importlib.util.spec_from_file_location("user_script", sys.argv[1])
@@ -121,7 +176,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.2.0",
+    "1.3.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -357,7 +412,9 @@ class GroupVarCommands(Star):
 
     # ---------------- 已见群会话记录 ----------------
 
-    def _sessions_path(self) -> str:
+    @staticmethod
+    def _data_base() -> str:
+        """插件持久数据根目录：data/plugin_data/<插件名>（框架 API 优先，失败退化插件目录）"""
         base = ""
         try:
             from astrbot.api.util import get_astrbot_plugin_data_path
@@ -373,7 +430,18 @@ class GroupVarCommands(Star):
             os.makedirs(d, exist_ok=True)
         except Exception:
             d = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(d, "sessions.json")
+        return d
+
+    def _store_dir(self) -> str:
+        d = os.path.join(self._data_base(), "store")
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception:
+            pass
+        return d
+
+    def _sessions_path(self) -> str:
+        return os.path.join(self._data_base(), "sessions.json")
 
     def _load_sessions(self) -> dict:
         try:
@@ -447,9 +515,16 @@ class GroupVarCommands(Star):
 
     # ---------------- 脚本执行 ----------------
 
-    async def _run_script(self, script_text: str, kwargs: dict, timeout: int, modules: dict | None = None):
-        """返回 (返回值, 脚本stdout, 错误信息或None)。modules 会写成同目录 .py 供脚本 import。"""
+    async def _run_script(self, script_text: str, kwargs: dict, timeout: int, modules: dict | None = None,
+                          session_key: str = ""):
+        """返回 (返回值, 脚本stdout, 错误信息或None)。modules 会写成同目录 .py 供脚本 import。
+        内置 store.py 先写入（用户同名全局函数模块可覆盖它）。"""
         with tempfile.TemporaryDirectory() as td:
+            try:
+                with open(os.path.join(td, "store.py"), "w", encoding="utf-8") as f:
+                    f.write(STORE_MODULE)
+            except Exception:
+                pass
             for mname, mcode in (modules or {}).items():
                 try:
                     with open(os.path.join(td, f"{mname}.py"), "w", encoding="utf-8") as f:
@@ -461,6 +536,8 @@ class GroupVarCommands(Star):
                 f.write(script_text)
             env = dict(os.environ)
             env["PYTHONIOENCODING"] = "utf-8"
+            env["GVC_STORE_DIR"] = self._store_dir()
+            env["GVC_SESSION_ID"] = str(session_key or "default")
             try:
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable,
@@ -607,7 +684,7 @@ class GroupVarCommands(Star):
             if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
                 value_list = body[len(tok):].split()
                 replied = False
-                async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
+                async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok, session_key=key):
                     replied = True
                     yield r
                 if not replied and not llm_fb:
@@ -619,7 +696,7 @@ class GroupVarCommands(Star):
 
     # ---------------- 指令执行 ----------------
 
-    async def _execute(self, event, cfg, gcfg, name, cmd_cfg, value_list, triggered=None):
+    async def _execute(self, event, cfg, gcfg, name, cmd_cfg, value_list, triggered=None, session_key=""):
         script = (cmd_cfg.get("script") or "").strip()
         if not script:
             yield event.plain_result(
@@ -640,7 +717,7 @@ class GroupVarCommands(Star):
         for mname, mcode in (gcfg.get("modules", {}) or {}).items():
             if isinstance(mcode, str):
                 modules[str(mname)] = mcode
-        result, printed, err = await self._run_script(script, kwargs, timeout, modules)
+        result, printed, err = await self._run_script(script, kwargs, timeout, modules, session_key)
         if err:
             # 脚本报错：默认无回复，仅记日志，不影响机器人
             logger.warning(f"[{PLUGIN_ID}] 指令 {name} 执行出错（已静默）: {err[:300]}")

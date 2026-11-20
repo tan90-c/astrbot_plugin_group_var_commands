@@ -59,6 +59,27 @@ def main(args, cmd, alias, value, user_id):
 3. 脚本报错/超时/返回空：默认静默无回复（仅记后端日志），消息继续交给 AstrBot 大模型流程兜底；首页「脚本报错/无输出时」选「拦截兜底」则完全静默，不再产生任何 LLM 回复
 4. 回复格式可在首页切换：markdown 卡片 / 纯文本（强制 msg_type=0，PC 端 QQ 推荐）
 
+## 内置持久存储（store）
+
+1. 指令脚本无需任何配置即可 `import store`：数据以文本 JSON 存于 `data/plugin_data/<插件名>/store/`，跨重启与插件更新保留（子进程临时目录跑完即焚，进程内变量存不住，持久化一律走 store）
+2. 默认存储位置按「会话 ID」自动命名——`store.load()` / `store.save(d)` 读写当前会话自己的 JSON 文件；传 `name="账号绑定"` 则同一会话下另开一份独立文件（不同 name 互不干扰，可按用途分文件）
+3. API：`load(default=None, name=None)` 读取（不存在/损坏返回 default，缺省 `{}`）；`save(data, name=None)` 原子写回（不怕写一半崩溃）；`exists/delete/path(name=None)`
+4. 配合默认入参 `user_id`（发言人唯一 ID）即可做用户级持久数据，如游戏账号绑定：
+
+```python
+import store
+
+def main(user_id, value):
+    d = store.load(name="游戏账号")          # {user_id: {"user_name": ..., "user_eos": ...}}
+    if user_id in d:
+        return f"你的QQ已绑定 {d[user_id]['user_name']}，如需换绑请先发送：解绑"
+    if not value:
+        return "游戏名不能为空！"
+    d[user_id] = {"user_name": value[0]}
+    store.save(d, name="游戏账号")
+    return "绑定成功！"
+```
+
 ## 安装
 
 1. AstrBot WebUI「插件」→ 从仓库地址安装：`https://github.com/tan90-c/astrbot_plugin_group_var_commands`；或将本文件夹放入 `data/plugins/`
