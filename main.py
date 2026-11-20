@@ -22,7 +22,7 @@ AstrBot 插件：自定义函数指令 (astrbot_plugin_group_var_commands)
   args        自定义变量分组字典：{分组名: {变量名: 值}}
   cmd         主指令名
   alias       命中的别名（主名触发时为空串）
-  value       指令名后的参数列表（模板占位内容在首位）
+  value       指令名后的参数列表（按空格拆分）
 脚本返回值直接转字符串回复（str 原样；dict/list 转 JSON；None/空不回复）；
 脚本报错/超时默认无回复，仅记后端日志，不影响机器人运行。
 """
@@ -94,9 +94,6 @@ _ALL_MESSAGE = _build_all_message_filter()
 _EM_RESOLVED = getattr(filter, "EventMessageType", None) is not None
 # 用字面量切分，避免 Windows 下 \n 被转为 \r\n 导致匹配失败
 RESULT_MARK = "###RES###"
-# 别名模板占位：任意成对花括号组（{*} / {value} / {二服} …）统一当通配捕获
-WILD_GROUP = re.compile(r"\{[^{}]*\}")
-
 # 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
 RUNNER = r"""
 import inspect, json, os, sys, importlib.util
@@ -122,7 +119,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.1.2",
+    "1.2.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -247,11 +244,8 @@ class GroupVarCommands(Star):
                         continue
                     if re.search(r"\s", a):
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能含空格")
-                    tmp = WILD_GROUP.sub("", a)
-                    if "{" in tmp or "}" in tmp:
-                        raise ValueError(f"指令 {cname} 的别名 {a} 花括号不成对或嵌套，占位符须为成对的 {{...}} 组")
-                    if WILD_GROUP.search(a) and not tmp:
-                        raise ValueError(f"指令 {cname} 的别名 {a} 不能只是占位符，需有固定文字")
+                    if "{" in a or "}" in a:
+                        raise ValueError(f"指令 {cname} 的别名 {a} 含花括号：模板别名功能已移除，别名只能是固定文字，请在面板删除此类别名")
                     if a == cname:
                         continue
                     if a not in aliases:
@@ -317,7 +311,29 @@ class GroupVarCommands(Star):
         items = sorted(self._sessions.values(), key=lambda x: x.get("last_seen", 0), reverse=True)
         for x in items:
             x.setdefault("type", "group")
-        return json_response({"sessions": items})
+        # 去重：同一会话可能因 umo 键变化/早期群号键缓存留下多条——
+        # 按 (group_id,type) 或 (platform,group_name,type) 合并，保留最新并补全 umo
+        merged = []
+        seen_gid = {}
+        seen_np = {}
+        for x in items:
+            gid = str(x.get("group_id") or "")
+            typ = x.get("type") or "group"
+            name = str(x.get("group_name") or "")
+            np_key = (str(x.get("platform") or ""), name, typ)
+            if gid and gid in seen_gid:
+                prev = seen_gid[gid]
+                if not prev.get("umo") and x.get("umo"):
+                    prev["umo"] = x["umo"]
+                continue
+            if name and np_key in seen_np:
+                continue
+            merged.append(x)
+            if gid:
+                seen_gid[gid] = x
+            if name:
+                seen_np[np_key] = x
+        return json_response({"sessions": merged})
 
     # ---------------- 已见群会话记录 ----------------
 
@@ -477,10 +493,9 @@ class GroupVarCommands(Star):
 
 
     def _trigger_index(self, cmds: dict):
-        """构建触发项表：主名优先；别名与其他主名重复→归主名指令；
-        别名之间重复→后创建的指令赢。模板别名支持多个花括号占位（任意 {...} 组等价，
-        如 查{*}玩家 / 查{服务器}玩家），
-        每个 {*} 按顺序捕获为 value 的一个元素（如 查{*}玩{*}家{*}）。"""
+        """构建触发词表（固定文字精确/前缀匹配）：主名优先；
+        别名与其他主名重复→归主名指令；别名之间重复→后创建的指令赢；
+        长触发词优先。"""
         trigger = {}
         for cname in cmds:
             trigger[cname] = cname
@@ -490,16 +505,10 @@ class GroupVarCommands(Star):
                 if not a or a in cmds:  # 与主名重复→主名指令赢，跳过
                     continue
                 trigger[a] = cname  # 别名间重复→后创建者覆盖
-        entries = []
-        for tok, canon in trigger.items():
-            if WILD_GROUP.search(tok):
-                parts = WILD_GROUP.split(tok)
-                pattern = "^" + "(.+?)".join(re.escape(p) for p in parts) + "$"
-                entries.append((tok, canon, "tpl", re.compile(pattern)))
-            else:
-                entries.append((tok, canon, "fixed", None))
-        # 固定文字部分长的优先；同长时非模板优先
-        entries.sort(key=lambda e: (len(WILD_GROUP.sub("", e[0])), not WILD_GROUP.search(e[0])), reverse=True)
+        # 旧版模板别名（含花括号）不再支持，运行时直接忽略
+        entries = [(tok, canon) for tok, canon in trigger.items()
+                   if "{" not in tok and "}" not in tok]
+        entries.sort(key=lambda e: len(e[0]), reverse=True)
         return entries
 
     @staticmethod
@@ -574,28 +583,13 @@ class GroupVarCommands(Star):
             body = body[1:].lstrip()
         trigger_entries = self._trigger_index(cmds)
         if dbg:
-            logger.info(f"[{PLUGIN_ID}] DBG body={body!r} entries={[(t, k) for t, _, k, _ in trigger_entries]}")
-        tokens = body.split()
-        for tok, canon, kind, pat in trigger_entries:
-            if kind == "fixed":
-                if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
-                    value_list = body[len(tok):].split()
-                    async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
-                        yield r
-                    return
-            else:
-                # 模板：先整句匹配，再逐个去掉尾部参数 token 重试（尾部 token 并入 value 尾部）
-                for i in range(len(tokens), 0, -1):
-                    prefix = " ".join(tokens[:i])
-                    m = pat.match(prefix)
-                    if m:
-                        caps = [g.strip() for g in m.groups()]
-                        if not all(caps):
-                            continue
-                        value_list = caps + [t for t in tokens[i:] if t.strip()]
-                        async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
-                            yield r
-                        return
+            logger.info(f"[{PLUGIN_ID}] DBG body={body!r} entries={trigger_entries[:8]}")
+        for tok, canon in trigger_entries:
+            if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
+                value_list = body[len(tok):].split()
+                async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
+                    yield r
+                return
         if dbg:
             logger.info(f"[{PLUGIN_ID}] DBG: 未命中任何触发词 body={body!r}")
       except Exception:

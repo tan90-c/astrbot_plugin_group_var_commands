@@ -11,7 +11,7 @@ const PARAM_HINT =
   "  args        自定义变量分组字典，形如 {\"分组名\": {\"变量名\": \"值\", ...}, ...}\n" +
   "  cmd         主指令名\n" +
   "  alias       命中的别名（用主指令名触发时为空串）\n" +
-  "  value       参数列表：普通触发按空格拆分；模板别名如 查{*}玩家 或 查{服务器}玩家（花括号内任意内容都是通配），收“查二服玩家 123”→ value=[\"二服\", \"123\"]; 多个占位按顺序各捕获一个元素\n" +
+  "  value       参数列表：触发词后的内容按空格拆分，如 \"状态 1区 2区\" → value=[\"1区\", \"2区\"]\n" +
   "全局函数模块：脚本顶部 import 模块名 或 from 模块名 import 函数，直接调用";
 
 let cfg = { script_timeout: 30, reply_format: "markdown", groups: {} };
@@ -538,7 +538,7 @@ function renderCmdBody() {
   const labAlias = document.createElement("div");
   labAlias.className = "hint";
   labAlias.style.marginTop = "12px";
-  labAlias.textContent = "附属指令名（别名，可多个）：支持花括号占位模板，任意 {...} 组都当通配（查{*}玩家 与 查{服务器}玩家 等价），每个占位按顺序捕获为 value 的一个元素（如 查{*}玩{*}家{*}）；群成员直接发 查二服玩家 即可触发，无需带花括号；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效";
+  labAlias.textContent = "附属指令名（别名，可多个）：固定文字触发词，发送「别名 参数…」即可触发（不带花括号/模板，旧的花括号模板别名已移除，保存时会被拒绝）；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效；长触发词优先";
   const tbAl = document.createElement("table");
   tbAl.innerHTML = "<tr><th>别名</th><th>操作</th></tr>";
   const alRows = [];
@@ -548,7 +548,7 @@ function renderCmdBody() {
     const td2 = document.createElement("td");
     const ai = document.createElement("input");
     ai.value = a;
-    ai.placeholder = "别名，如 查{*}玩家";
+    ai.placeholder = "别名，如 查玩家";
     const del = document.createElement("button");
     del.className = "btn small danger";
     del.textContent = "删除";
