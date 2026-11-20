@@ -121,7 +121,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.1.0",
+    "1.2.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -550,7 +550,7 @@ class GroupVarCommands(Star):
 
     @staticmethod
     def _chat_id(event) -> str:
-        """私聊会话的对端标识（openid 等）"""
+        """发言人唯一标识（qq_official 为 member_openid 加密串，其他平台为明文 QQ 号）"""
         sid = ""
         try:
             sid = event.get_sender_id() or ""
@@ -632,6 +632,8 @@ class GroupVarCommands(Star):
             "cmd": name,
             "alias": "" if (triggered is None or triggered == name) else str(triggered),
             "value": value_list,
+            # 发言人唯一 ID：qq_official 下为 member_openid 加密串（同平台同机器人内稳定）
+            "user_id": str(self._chat_id(event) or ""),
         }
         timeout = int(cfg.get("script_timeout", 30) or 30)
         modules = {}

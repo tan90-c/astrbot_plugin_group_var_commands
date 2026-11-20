@@ -37,7 +37,7 @@ s 1区                ← 别名 s 等同 状态
 ```python
 from utils import fmt          # 可选：导入全局函数模块
 
-def main(args, cmd, alias, value):
+def main(args, cmd, alias, value, user_id):
     g = args.get("主服", {})
     return f"{g.get('name')} ({fmt(g.get('ip',''), g.get('port',''))}) 运行中"
 ```
@@ -50,6 +50,7 @@ def main(args, cmd, alias, value):
 | `cmd` | str | 主指令名 |
 | `alias` | str | 命中的别名；主名触发时为空串 |
 | `value` | list | 触发词后的参数列表（按空格拆分） |
+| `user_id` | str | 发言人唯一 ID（QQ 官方机器人为 member_openid 加密串，同机器人内稳定；其他平台为明文 QQ 号） |
 
 输出规则：
 
