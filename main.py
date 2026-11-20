@@ -115,13 +115,61 @@ def path(name=None):
     fn = sid + ".json" if not name else sid + "__" + _slug(name) + ".json"
     return os.path.join(_root(), fn)
 
+class Store(dict):
+    """load() 返回的自动保存字典：d[k]=v / update / pop / setdefault / clear 等改动
+    立即写回存储文件（键相同则覆盖；pop 不存在的键返回 None）。"""
+
+    _name = None
+
+    def _persist(self):
+        save(dict(self), self._name)
+
+    def update(self, *a, **kw):
+        dict.update(self, *a, **kw)
+        self._persist()
+
+    def pop(self, key, default=None):
+        v = dict.pop(self, key, default)
+        self._persist()
+        return v
+
+    def popitem(self):
+        v = dict.popitem(self)
+        self._persist()
+        return v
+
+    def setdefault(self, key, default=None):
+        v = dict.setdefault(self, key, default)
+        self._persist()
+        return v
+
+    def clear(self):
+        dict.clear(self)
+        self._persist()
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, value)
+        self._persist()
+
+    def __delitem__(self, key):
+        dict.__delitem__(self, key)
+        self._persist()
+
+
 def load(default=None, name=None):
-    """读存储（文本 JSON config）。不存在/损坏返回 default（缺省 {}）。"""
+    """读存储（文本 JSON config），返回自动保存字典 Store（dict 子类）。
+    不存在/损坏返回 default（缺省 {}）。之后改字典即自动落盘，可不再调 save；
+    存的是 list 等非 dict 时原样返回（无自动保存，需自己 save）。"""
     try:
         with open(path(name), encoding="utf-8") as f:
-            return json.load(f)
+            obj = json.load(f)
     except Exception:
-        return {} if default is None else default
+        obj = {} if default is None else default
+    if isinstance(obj, dict):
+        st = Store(obj)
+        st._name = name
+        return st
+    return obj
 
 def save(data, name=None):
     """原子写回存储（先写临时文件再 replace，不怕写一半崩）。返回文件路径。"""
@@ -176,7 +224,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.3.0",
+    "1.4.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):

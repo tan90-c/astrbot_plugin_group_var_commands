@@ -63,7 +63,9 @@ def main(args, cmd, alias, value, user_id):
 
 1. 指令脚本无需任何配置即可 `import store`：数据以文本 JSON 存于 `data/plugin_data/<插件名>/store/`，跨重启与插件更新保留（子进程临时目录跑完即焚，进程内变量存不住，持久化一律走 store）
 2. 默认存储位置按「会话 ID」自动命名——`store.load()` / `store.save(d)` 读写当前会话自己的 JSON 文件；传 `name="账号绑定"` 则同一会话下另开一份独立文件（不同 name 互不干扰，可按用途分文件）
-3. API：`load(default=None, name=None)` 读取（不存在/损坏返回 default，缺省 `{}`）；`save(data, name=None)` 原子写回（不怕写一半崩溃）；`exists/delete/path(name=None)`
+3. `load()` 返回 **自动保存字典**（`Store`，dict 子类）：`d[k]=v`、`d.update({...})`（同名键覆盖）、`d.pop(k)`（键不存在返回 `None`）、`setdefault/clear/popitem/del d[k]` 任一改动**立即落盘，无需再调 save**
+4. API：`load(default=None, name=None)` 读取（不存在/损坏返回 default，缺省 `{}`）；`save(data, name=None)` 原子整体写回（手动改普通 dict、或想一次替换整份数据时用；不怕写一半崩溃）；`exists/delete/path(name=None)`
+5. 注意：只有**顶层键**的改动自动保存；`d["u"]["sub"]=1` 这类嵌套字典内部改动不会触发（改完嵌套后要 `d[k] = d[k]` 重赋一次或 `store.save(d)`）
 4. 配合默认入参 `user_id`（发言人唯一 ID）即可做用户级持久数据，如游戏账号绑定：
 
 ```python
@@ -75,8 +77,7 @@ def main(user_id, value):
         return f"你的QQ已绑定 {d[user_id]['user_name']}，如需换绑请先发送：解绑"
     if not value:
         return "游戏名不能为空！"
-    d[user_id] = {"user_name": value[0]}
-    store.save(d, name="游戏账号")
+    d[user_id] = {"user_name": value[0]}   # 顶层赋值即自动保存
     return "绑定成功！"
 ```
 

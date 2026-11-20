@@ -2,7 +2,7 @@ name: astrbot_plugin_group_var_commands
 display_name: 自定义函数指令
 desc: 会话绑定 + 自定义变量分组 + 全局函数模块 + 指令绑定 Python 脚本，带 QQ 式可视化控制面板
 author: tan90-c
-version: 1.3.0
+version: 1.4.0
 repo: https://github.com/tan90-c/astrbot_plugin_group_var_commands
 astrbot_version: ">=4.9.2"
 support_platforms:
