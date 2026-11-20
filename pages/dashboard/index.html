@@ -126,6 +126,13 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
             <option value="text">纯文本（强制 msg_type=0，推荐）</option>
           </select>
         </div>
+        <div class="row">
+          <span class="hint">脚本报错/无输出时</span>
+          <select id="llmFallback" style="min-width:300px">
+            <option value="1">交给大模型兜底回复（AstrBot 默认）</option>
+            <option value="0">拦截兜底，完全静默</option>
+          </select>
+        </div>
       </div>
     </div>
     <div id="groupView" style="display:none">

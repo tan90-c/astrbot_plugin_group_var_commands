@@ -13,6 +13,7 @@ AstrBot 插件：自定义函数指令 (astrbot_plugin_group_var_commands)
 - groups.<会话>.bind      绑定的主会话 umo（非空=本会话只读跟随主会话，原内容保留）
 - groups.<会话>.bind_mode 绑定模式：all=全量跟随；code=仅函数模块与指令跟随，变量分组用本会话自己的
 - groups.<会话>.var_notes 变量说明备注 {分组名: {键: 说明}}（仅面板展示，不进脚本 args）
+- llm_fallback  脚本报错/无输出时是否放行 AstrBot 的 LLM 兜底（false=拦截，完全静默）
 - groups.<会话>.modules   全局函数模块（模块名 -> Python 源码，指令脚本 import 即用）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
@@ -120,7 +121,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.0.2",
+    "1.1.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -140,6 +141,7 @@ class GroupVarCommands(Star):
             return {}
         cfg.setdefault("script_timeout", 30)
         cfg.setdefault("reply_format", "markdown")
+        cfg.setdefault("llm_fallback", True)
         cfg.setdefault("groups", {})
         return cfg
 
@@ -193,6 +195,7 @@ class GroupVarCommands(Star):
         reply_format = str(data.get("reply_format", "markdown")).strip().lower()
         if reply_format not in ("markdown", "text"):
             raise ValueError("reply_format 须为 markdown 或 text")
+        llm_fallback = bool(data.get("llm_fallback", True))
         groups_in = data.get("groups")
         if not isinstance(groups_in, dict):
             raise ValueError("groups 必须是 JSON 对象（会话来源 umo -> 配置）")
@@ -290,7 +293,8 @@ class GroupVarCommands(Star):
             tgt = groups.get(b)
             if tgt is not None and tgt.get("bind"):
                 raise ValueError(f"绑定目标 {b} 自身是绑定会话，不允许链式绑定")
-        return {"script_timeout": timeout, "reply_format": reply_format, "groups": groups}
+        return {"script_timeout": timeout, "reply_format": reply_format,
+                "llm_fallback": llm_fallback, "groups": groups}
 
     async def _save(self) -> bool:
         try:
@@ -317,6 +321,7 @@ class GroupVarCommands(Star):
         cfg = self._cfg()
         cfg["script_timeout"] = cleaned["script_timeout"]
         cfg["reply_format"] = cleaned["reply_format"]
+        cfg["llm_fallback"] = cleaned["llm_fallback"]
         cfg["groups"] = cleaned["groups"]
         if not await self._save():
             return error_response("配置文件写入失败，详见后端日志", status_code=500)
@@ -597,11 +602,17 @@ class GroupVarCommands(Star):
         if body[:1] in ("/", "／"):
             body = body[1:].lstrip()
         trigger_entries = self._trigger_index(cmds)
+        llm_fb = bool(cfg.get("llm_fallback", True))
         for tok, canon in trigger_entries:
             if body == tok or body.startswith(tok + " ") or body.startswith(tok + "　"):
                 value_list = body[len(tok):].split()
+                replied = False
                 async for r in self._execute(event, cfg, gcfg, canon, cmds[canon], value_list, tok):
+                    replied = True
                     yield r
+                if not replied and not llm_fb:
+                    # 拦截 AstrBot 的 LLM 兜底：脚本报错/无输出时完全静默
+                    event.stop_event()
                 return
       except Exception:
         logger.exception(f"[{PLUGIN_ID}] on_message 内部异常（请反馈此堆栈）")

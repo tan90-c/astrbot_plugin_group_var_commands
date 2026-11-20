@@ -138,7 +138,7 @@ function normGroup(g) {
 
 async function loadCfg() {
   const data = await bridge.apiGet("config");
-  cfg = { script_timeout: data.script_timeout ?? 30, reply_format: data.reply_format ?? "markdown", groups: data.groups || {} };
+  cfg = { script_timeout: data.script_timeout ?? 30, reply_format: data.reply_format ?? "markdown", llm_fallback: data.llm_fallback ?? true, groups: data.groups || {} };
   for (const g of Object.values(cfg.groups)) normGroup(g);
   if (selGroup && !cfg.groups[selGroup]) selGroup = "";
   renderAll();
@@ -493,6 +493,7 @@ function renderViews() {
 function renderAll() {
   $("scriptTimeout").value = cfg.script_timeout;
   $("replyFormat").value = cfg.reply_format || "markdown";
+  $("llmFallback").value = cfg.llm_fallback === false ? "0" : "1";
   renderSidebar();
   renderViews();
   if (!selGroup) return;
@@ -699,6 +700,12 @@ $("replyFormat").addEventListener("change", (e) => {
   markDirty();
   renderRaw();
   saveNow();
+});
+$("llmFallback").addEventListener("change", (e) => {
+  cfg.llm_fallback = e.target.value === "1";
+  markDirty();
+  saveNow();
+  toast(cfg.llm_fallback ? "报错/无输出时将交给大模型兜底" : "已拦截大模型兜底：静默就是真静默");
 });
 $("scriptTimeout").addEventListener("change", (e) => {
   let v = parseInt(e.target.value || "30", 10);

@@ -10,6 +10,12 @@
     "default": "markdown",
     "hint": "面板首页可切换，改动即时保存。必须存在于本 schema 中，插件更新/重载后才会保留该值。"
   },
+  "llm_fallback": {
+    "description": "脚本报错或无输出时是否交给大模型兜底回复(true/false)",
+    "type": "bool",
+    "default": true,
+    "hint": "false 时插件会拦截 AstrBot 后续处理（stop_event），指令命中但脚本静默/报错的情况下不产生任何兜底回复。"
+  },
   "groups": {
     "description": "会话来源(umo，推荐)或群号 -> {groups, commands}",
     "type": "dict",
