@@ -215,12 +215,30 @@ function pyHighlight(code) {
   return out;
 }
 
-function buildCodeEditor(getValue, setValue, onBlur) {
+function buildCodeEditor(getValue, setValue, onBlur, foldKey) {
   const box = document.createElement("div");
   box.className = "codebox";
   const bar = document.createElement("div");
   bar.className = "bar";
   bar.innerHTML = "<span>PYTHON 脚本</span><span>Tab 缩进 · 失焦自动保存</span>";
+  const fk = foldKey || "default";
+  const fb = document.createElement("button");
+  fb.className = "fold-btn";
+  fb.type = "button";
+  fb.innerHTML = CHEVRON;
+  const applyF = (f) => {
+    box.classList.toggle("folded", f);
+    fb.title = f ? "展开" : "收起";
+  };
+  applyF(!!editorFold.get(fk));
+  fb.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const f = !box.classList.contains("folded");
+    editorFold.set(fk, f);
+    applyF(f);
+  };
+  bar.appendChild(fb);
   const body = document.createElement("div");
   body.className = "body";
   const gutter = document.createElement("pre");
@@ -273,6 +291,30 @@ function buildCodeEditor(getValue, setValue, onBlur) {
   });
   refresh();
   return box;
+}
+
+// ---------- 折叠 ----------
+
+const CHEVRON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l5 5 5-5"/></svg>';
+const editorFold = new Map();
+
+function initCardFolds() {
+  for (const card of document.querySelectorAll(".card")) {
+    const h2 = card.querySelector(":scope > h2");
+    if (!h2 || h2.querySelector(".fold-btn")) continue;
+    const b = document.createElement("button");
+    b.className = "fold-btn";
+    b.type = "button";
+    b.innerHTML = CHEVRON;
+    b.title = "收起";
+    b.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const f = card.classList.toggle("folded");
+      b.title = f ? "展开" : "收起";
+    };
+    h2.appendChild(b);
+  }
 }
 
 // ---------- 收割式键值表（DOM 顺序即数据顺序） ----------
@@ -544,7 +586,7 @@ function renderModBody() {
   const lab = document.createElement("div");
   lab.className = "hint";
   lab.textContent = "模块 " + selMod + ".py（定义若干函数，指令脚本 import 即用）";
-  host.append(lab, buildCodeEditor(() => g.modules[selMod], (v) => { g.modules[selMod] = v; }));
+  host.append(lab, buildCodeEditor(() => g.modules[selMod], (v) => { g.modules[selMod] = v; }, undefined, "mod:" + selMod));
 }
 
 function renderCmdBody() {
@@ -567,7 +609,7 @@ function renderCmdBody() {
   const lab = document.createElement("div");
   lab.className = "hint";
   lab.textContent = "Python 脚本（def main(...)；返回值转字符串直接回复；报错超时静默不崩）";
-  host.append(lab, buildCodeEditor(() => c.script, (v) => { c.script = v; }));
+  host.append(lab, buildCodeEditor(() => c.script, (v) => { c.script = v; }, undefined, "cmd:" + selCmd));
 
   const labAlias = document.createElement("div");
   labAlias.className = "hint";
@@ -920,6 +962,7 @@ window.addEventListener("beforeunload", (e) => {
 
 // ---------- 初始化 ----------
 
+initCardFolds();
 await bridge.ready();
 try {
   await loadSessions();

@@ -30,6 +30,17 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,B
 .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;max-width:940px}
 .card h2{font-size:14px;margin:0 0 10px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.fold-btn{margin-left:auto;flex:none;width:24px;height:22px;border:none;background:transparent;color:var(--muted,#8a8f98);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px}
+.fold-btn:hover{background:rgba(128,132,140,.16);color:var(--text,#ddd)}
+.fold-btn svg{transition:transform .15s ease;display:block}
+.card.folded h2 .fold-btn svg{transform:rotate(-90deg)}
+.card.folded > :not(h2){display:none !important}
+.card.folded h2{margin-bottom:0;border-bottom:none;padding-bottom:0}
+.card h2{display:flex;align-items:center;gap:8px}
+.codebox .bar > span:nth-of-type(2){margin-left:auto}
+.codebox .bar .fold-btn{margin-left:10px}
+.codebox.folded .body{display:none}
+.codebox.folded .fold-btn svg{transform:rotate(-90deg)}
 .ghead{display:flex;align-items:center;gap:10px;max-width:940px;margin-bottom:12px}
 .ghead h1{flex:1}
 input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12px;outline:none}
