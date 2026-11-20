@@ -99,74 +99,40 @@ RESULT_MARK = "###RES###"
 # 子进程运行器：加载用户脚本 -> 按 main() 形参自动过滤 kwargs -> 调用 -> 打印 JSON 结果
 # 内置持久存储模块：指令脚本 `import store` 即用（数据存 data/plugin_data/ 下，跨重启/更新保留）
 STORE_MODULE = r'''
-import json, os, re, tempfile as _tmp
+import os, re
 
 def _root():
     d = os.environ.get("GVC_STORE_DIR") or os.path.join(os.path.expanduser("~"), ".gvc_store")
+    d = os.path.join(d, "store")
     os.makedirs(d, exist_ok=True)
     return d
 
 def _slug(x):
     return re.sub(r"[^\w.-]", "_", str(x))[:80]
 
-def path(name=None):
-    """存储文件完整路径。name=None 用当前会话 ID 命名；指定 name 则同一会话下另开一份文件。"""
-    sid = _slug(os.environ.get("GVC_SESSION_ID") or "default")
-    fn = sid + ".json" if not name else sid + "__" + _slug(name) + ".json"
-    return os.path.join(_root(), fn)
+def session():
+    """当前会话 ID 原文（umo）：与面板绑定会话的键、指令入参 session_id 一致；
+    群聊为群号加密串（group_openid），私聊为对方加密串（openid），不是发言人 ID。"""
+    return os.environ.get("GVC_SESSION_ID") or "default"
 
-class Store(dict):
-    """load() 返回的存储字典：与普通 dict 行为完全一致（遍历、update、pop 等均不自动落盘）。
-    改完后调 d.save() 写回它来源的文件；未再 save 的改动仅存在于本次脚本运行内。"""
-
-    _name = None
-
-    def save(self):
-        """原子保存本字典到来源文件（等价 store.save(d, name=来源name)）。返回文件路径。"""
-        return save(dict(self), self._name)
-
-
-def load(default=None, name=None):
-    """读存储（文本 JSON config），返回 Store（dict 子类，行为同普通 dict，改完 d.save() 落盘）。
-    不存在/损坏返回 default（缺省 {}）。存的是 list 等非 dict 时原样返回（用 store.save 写回）。"""
-    try:
-        with open(path(name), encoding="utf-8") as f:
-            obj = json.load(f)
-    except Exception:
-        obj = {} if default is None else default
-    if isinstance(obj, dict):
-        st = Store(obj)
-        st._name = name
-        return st
-    return obj
-
-def save(data, name=None):
-    """原子写回存储（先写临时文件再 replace，不怕写一半崩）。返回文件路径。"""
-    p = path(name)
-    fd, t = _tmp.mkstemp(dir=os.path.dirname(p), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(t, p)
-    except Exception:
-        try:
-            os.unlink(t)
-        except Exception:
-            pass
-        raise
-    return p
-
-def delete(name=None):
-    """删除存储文件（不存在静默）。"""
-    try:
-        os.remove(path(name))
-    except FileNotFoundError:
-        pass
-    except Exception:
-        raise
-
-def exists(name=None):
-    return os.path.isfile(path(name))
+def path(rel=None):
+    """持久目录路径（不存在的层级自动创建），位于 data/plugin_data/<插件名>/store/ 下，跨重启/更新保留。
+      path()      -> .../store/{会话ID}/        本会话专属目录（默认用法）
+      path('./')  -> .../store/                 所有会话的存储根
+      path('../') -> .../astrbot_plugin_group_var_commands/   插件数据目录
+      path('./子目录') -> .../store/子目录/；其余以存储根为基准解析。尾带 / 或无扩展名视为目录（自动创建），带扩展名视为文件（只建父目录）。"""
+    root = _root()
+    if rel is None:
+        target = os.path.join(root, _slug(session()))
+        os.makedirs(target, exist_ok=True)
+        return target
+    target = os.path.normpath(os.path.join(root, str(rel)))
+    ext = os.path.splitext(os.path.basename(target))[1]
+    if str(rel).endswith(("/", os.sep)) or str(rel) in (".", "./", "../", "..") or not ext:
+        os.makedirs(target, exist_ok=True)   # 视为目录：整体创建
+    else:
+        os.makedirs(os.path.dirname(target), exist_ok=True)   # 带扩展名视为文件：只创建父目录
+    return target
 '''
 
 RUNNER = r"""
@@ -193,7 +159,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.5.0",
+    "1.6.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -457,6 +423,8 @@ class GroupVarCommands(Star):
             pass
         return d
 
+    # 注：注入子进程的 GVC_STORE_DIR 为插件数据目录，store 内部再拼 store/ 层级
+
     def _sessions_path(self) -> str:
         return os.path.join(self._data_base(), "sessions.json")
 
@@ -553,7 +521,7 @@ class GroupVarCommands(Star):
                 f.write(script_text)
             env = dict(os.environ)
             env["PYTHONIOENCODING"] = "utf-8"
-            env["GVC_STORE_DIR"] = self._store_dir()
+            env["GVC_STORE_DIR"] = self._data_base()
             env["GVC_SESSION_ID"] = str(session_key or "default")
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -728,6 +696,8 @@ class GroupVarCommands(Star):
             "value": value_list,
             # 发言人唯一 ID：qq_official 下为 member_openid 加密串（同平台同机器人内稳定）
             "user_id": str(self._chat_id(event) or ""),
+            # 会话 ID：与面板「绑定会话」用的键一致（umo，群聊=群号加密串，私聊=对端加密串）
+            "session_id": str(session_key or ""),
         }
         timeout = int(cfg.get("script_timeout", 30) or 30)
         modules = {}

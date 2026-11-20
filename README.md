@@ -37,7 +37,7 @@ s 1区                ← 别名 s 等同 状态
 ```python
 from utils import fmt          # 可选：导入全局函数模块
 
-def main(args, cmd, alias, value, user_id):
+def main(args, cmd, alias, value, user_id, session_id):
     g = args.get("主服", {})
     return f"{g.get('name')} ({fmt(g.get('ip',''), g.get('port',''))}) 运行中"
 ```
@@ -50,7 +50,8 @@ def main(args, cmd, alias, value, user_id):
 | `cmd` | str | 主指令名 |
 | `alias` | str | 命中的别名；主名触发时为空串 |
 | `value` | list | 触发词后的参数列表（按空格拆分） |
-| `user_id` | str | 发言人唯一 ID（QQ 官方机器人为 member_openid 加密串，同机器人内稳定；其他平台为明文 QQ 号） |
+| `user_id` | str | **发言人**唯一 ID（QQ 官方机器人为 member_openid 加密串，同机器人内稳定；其他平台为明文 QQ 号） |
+| `session_id` | str | **会话** ID（与面板绑定会话的键一致：群聊=群号加密串 group_openid，私聊=对方加密串；同一会话所有人相同，`store.session()` 同值） |
 
 输出规则：
 
@@ -59,29 +60,40 @@ def main(args, cmd, alias, value, user_id):
 3. 脚本报错/超时/返回空：默认静默无回复（仅记后端日志），消息继续交给 AstrBot 大模型流程兜底；首页「脚本报错/无输出时」选「拦截兜底」则完全静默，不再产生任何 LLM 回复
 4. 回复格式可在首页切换：markdown 卡片 / 纯文本（强制 msg_type=0，PC 端 QQ 推荐）
 
-## 内置持久存储（store）
+## 内置存储路径（store）
 
-1. 指令脚本无需任何配置即可 `import store`：数据以文本 JSON 存于 `data/plugin_data/<插件名>/store/`，跨重启与插件更新保留（子进程临时目录跑完即焚，进程内变量存不住，持久化一律走 store）
-2. 默认存储位置按「会话 ID」自动命名——`store.load()` / `store.save(d)` 读写当前会话自己的 JSON 文件；传 `name="账号绑定"` 则同一会话下另开一份独立文件（不同 name 互不干扰，可按用途分文件）
-3. `load()` 返回 `Store`（dict 子类）：**与普通 dict 行为完全一致**（可正常遍历/`update`/`pop`/`del`，均不自动落盘），改完调 **`d.save()`** 一步写回它来源的文件
-4. API：`load(default=None, name=None)` 读取（不存在/损坏返回 default，缺省 `{}`）；实例 `d.save()` 或模块级 `store.save(data, name=None)` 均为原子整体写回（不怕写一半崩溃）；`exists/delete/path(name=None)`
-5. 记得改完要 `d.save()`，否则本次脚本运行结束后改动丢失；`pop(k)` 是原生 dict.pop——删的键不存在会 KeyError，稳妥写法 `old = d.pop(k, None)`
-4. 配合默认入参 `user_id`（发言人唯一 ID）即可做用户级持久数据，如游戏账号绑定：
+1. 指令脚本无需任何配置即可 `import store`，提供两个函数：`store.path(rel=None)` 取持久**目录**路径（不存在的层级自动创建，位于 `data/plugin_data/<插件名>/store/`，跨重启与插件更新保留）；`store.session()` 取当前会话 ID 原文（umo，= 绑定会话的那个 ID：群聊为群号加密串、私聊为对方加密串，与指令入参 `session_id` 相同，不是发言人 ID）
+2. `path` 的层级语义：
+
+| 调用 | 返回（自动创建） |
+| --- | --- |
+| `store.path()` | `.../store/{会话ID}/` —— 本会话专属目录（默认用法） |
+| `store.path('./')` | `.../store/` —— 所有会话的存储根 |
+| `store.path('../')` | `.../astrbot_plugin_group_var_commands/` —— 插件数据目录 |
+| `store.path('./共享区')` | `.../store/共享区/` —— 以存储根为基准，可跨会话共享 |
+
+3. 文件读写自行实现（标准 Python 即可），推荐原子写避免半截坏文件：
 
 ```python
-import store
+import store, json, os, tempfile
 
-def main(user_id, value):
-    d = store.load(name="游戏账号")          # {user_id: {"user_name": ..., "user_eos": ...}}
-    if user_id in d:
-        return f"你的QQ已绑定 {d[user_id]['user_name']}，如需换绑请先发送：解绑"
-    if not value:
-        return "游戏名不能为空！"
-    d[user_id] = {"user_name": value[0]}
-    d.save()                               # 改完保存，写回本文件
-    return "绑定成功！"
+def read(fname, default=None):
+    try:
+        with open(os.path.join(store.path(), fname), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {} if default is None else default
+
+def write(fname, data):
+    p = os.path.join(store.path(), fname)
+    fd, t = tempfile.mkstemp(dir=os.path.dirname(p), suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(t, p)   # 原子替换，不怕写一半崩溃
+
+# 会话内多用途 = 同一目录放多个文件：read("游戏账号.json") / read("积分.json")
+# 跨会话共享数据 = store.path("./共享/x.json") 自行拼目录
 ```
-
 ## 安装
 
 1. AstrBot WebUI「插件」→ 从仓库地址安装：`https://github.com/tan90-c/astrbot_plugin_group_var_commands`；或将本文件夹放入 `data/plugins/`

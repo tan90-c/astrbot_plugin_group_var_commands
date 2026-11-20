@@ -13,8 +13,9 @@ const PARAM_HINT =
   "  alias       命中的别名（用主指令名触发时为空串）\n" +
   "  value       参数列表：触发词后的内容按空格拆分，如 \"状态 1区 2区\" → value=[\"1区\", \"2区\"]\n" +
   "  user_id     发言人唯一ID（QQ官方机器人为member_openid加密串，同机器人内稳定）\n" +
+  "  session_id  会话ID（=绑定会话的键：群聊为群号加密串，私聊为对方加密串；store.session() 同值，不是发言人ID）\n" +
   "全局函数模块：脚本顶部 import 模块名 或 from 模块名 import 函数，直接调用\n" +
-  "持久存储：import store → d=store.load()（普通字典用法），改完 d.save() 写回；store.load(name=\"用途\") 按用途另开文件；store.save(d, name=...) 亦可；跨重启保留";
+  "存储路径：import store → store.path() 得本会话专属持久目录（自动创建，data/plugin_data/ 下跨重启保留），文件读写自行实现；store.session() 取会话ID；./ \u548c ../ 逐级向上";
 
 let cfg = { script_timeout: 30, reply_format: "markdown", groups: {} };
 let sessions = [];
