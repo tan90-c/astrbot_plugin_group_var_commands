@@ -11,6 +11,7 @@ AstrBot 插件：自定义函数指令 (astrbot_plugin_group_var_commands)
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
 - groups.<会话>.note      备注名（面板左侧列表显示用，可空）
 - groups.<会话>.bind      绑定的主会话 umo（非空=本会话只读跟随主会话，原内容保留）
+- groups.<会话>.bind_mode 绑定模式：all=全量跟随；code=仅函数模块与指令跟随，变量分组用本会话自己的
 - groups.<会话>.var_notes 变量说明备注 {分组名: {键: 说明}}（仅面板展示，不进脚本 args）
 - groups.<会话>.modules   全局函数模块（模块名 -> Python 源码，指令脚本 import 即用）
 - groups.<会话>.commands  自定义指令（script + aliases）
@@ -120,7 +121,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.4.0",
+    "1.5.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -226,6 +227,9 @@ class GroupVarCommands(Star):
             bind = g.get("bind", "") or ""
             if not isinstance(bind, str):
                 raise ValueError(f"会话 {gid} 的 bind 必须是字符串")
+            bind_mode = str(g.get("bind_mode", "all") or "all").strip().lower()
+            if bind_mode not in ("all", "code"):
+                raise ValueError(f"会话 {gid} 的 bind_mode 须为 all 或 code")
             if not isinstance(mods_in, dict):
                 raise ValueError(f"群 {gid} 的 modules 必须是对象（模块名 -> Python 源码）")
             modules: dict = {}
@@ -269,6 +273,7 @@ class GroupVarCommands(Star):
                 "aggregate": True,
                 "note": note.strip(),
                 "bind": bind.strip(),
+                "bind_mode": bind_mode if bind.strip() else "all",
                 "var_notes": var_notes,
                 "modules": modules,
                 "groups": {
@@ -580,7 +585,16 @@ class GroupVarCommands(Star):
             master = groups.get(bind)
             if not master:
                 logger.warning(f"[{PLUGIN_ID}] 会话 {key} 绑定的主会话 {bind!r} 不存在，指令已全部失效（静默）。请解绑或改绑")
-            gcfg = master or {}
+            master = master or {}
+            if str(gcfg.get("bind_mode", "all")) == "code":
+                # 仅函数与指令跟随主会话，变量分组用本会话自己的
+                gcfg = {
+                    "commands": master.get("commands", {}) or {},
+                    "modules": master.get("modules", {}) or {},
+                    "groups": gcfg.get("groups", {}) or {},
+                }
+            else:
+                gcfg = master
         cmds = gcfg.get("commands", {})
         if not cmds:
             return

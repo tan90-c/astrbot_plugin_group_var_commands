@@ -7,7 +7,7 @@
 ## 功能一览
 
 1. 会话绑定：机器人收到过消息的群聊/私聊自动出现在首页列表中，一键绑定生成独立标签页（QQ 式左侧会话列表），无需手填任何 ID；每个会话一份独立配置
-2. 会话跟随：标签页可通过「绑定会话」挂到某个主会话下——绑定后本标签页只读，变量分组/函数模块/指令全部实时跟随主会话；解绑即恢复原有内容（备注名与删除标签页始终可用）
+2. 会话跟随：标签页可挂到主会话下实时跟随，两种模式——「绑定会话」=全量只读跟随（变量/函数/指令）；「仅绑定函数和指令」=只有函数模块与指令跟随主会话，变量分组仍是本会话自己的且可编辑（多群共用一套指令逻辑、各群独立服务器参数）。解绑即恢复（备注名与删除标签页始终可用）
 3. 备注名：会话标签页头部可填备注名；左侧列表只显示备注名，详情页标题显示原始会话 ID
 4. 自定义变量分组：多个命名分组，每组任意键值对（存服务器 IP/端口/后台账号密码等），每个变量可附「说明」备注用途（仅面板展示，不进脚本），支持 ↑↓ 排序、分组改名/删除
 5. 全局函数模块：每个会话可定义多个 Python 模块（模块=一个 .py 文件，内含多个函数），指令脚本 `import 模块名` / `from 模块名 import 函数` 直接复用，消除重复代码
@@ -66,7 +66,7 @@ def main(args, cmd, alias, value):
 
 ## 配置存储
 
-1. 面板所有修改写入 `data/config/astrbot_plugin_group_var_commands_config.json`，结构为 `script_timeout / reply_format / groups.<会话umo>.{note, bind, var_notes, modules, groups, commands}`（bind 非空=只读跟随该主会话；var_notes=变量说明 {分组名:{键:说明}}）
+1. 面板所有修改写入 `data/config/astrbot_plugin_group_var_commands_config.json`，结构为 `script_timeout / reply_format / groups.<会话umo>.{note, bind, bind_mode, var_notes, modules, groups, commands}`（bind 非空=跟随该主会话；bind_mode=code 时仅函数与指令跟随；var_notes=变量说明 {分组名:{键:说明}}）
 2. 高级 JSON 区实时展示当前会话完整配置（自动与页面同步），粘贴新 JSON 可一键导入覆盖；「复制全部」从其他标签深拷贝变量分组+函数模块+指令；「绑定会话」把当前标签挂到所选主会话（只读跟随），按钮变「解绑会话」
 3. 机器人见过的会话记录缓存于 `data/plugin_data/astrbot_plugin_group_var_commands/sessions.json`（仅用于面板展示选择）
 

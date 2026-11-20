@@ -77,6 +77,14 @@ textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;f
 #modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;max-width:420px;width:88vw;box-shadow:0 12px 32px rgba(0,0,0,.3)}
 #modalMsg{font-size:13px;margin-bottom:14px;white-space:pre-wrap}
 #bindLockZone { position: relative; }
+.card.locked { position: relative; filter: saturate(0.65) opacity(0.9); }
+.card.locked::after {
+  content: ""; position: absolute; inset: -5px; z-index: 30;
+  background: rgba(120, 124, 132, 0.18);
+  border: 1px solid rgba(120, 124, 132, 0.35);
+  border-radius: 14px; cursor: not-allowed;
+}
+table th:nth-last-child(-n+2), table td:nth-last-child(-n+2) { width: 1%; white-space: nowrap; }
 #bindLockZone.locked::after {
   content: ""; position: absolute; inset: -6px; z-index: 30;
   background: rgba(120, 124, 132, 0.18);
@@ -135,8 +143,7 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
         <button class="btn small danger" id="btnDelGroup">删除当前群</button>
       </div>
       <div id="bindBanner" class="hint" style="display:none;margin:0 0 12px;padding:8px 12px;border:1px dashed var(--border);border-radius:8px"></div>
-      <div id="bindLockZone">
-      <div class="card">
+      <div class="card" id="varsCard">
         <h2>自定义变量分组</h2>
         <div class="toolbar">
           <select id="aggSelect" style="min-width:180px"></select>
@@ -149,6 +156,7 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
         <div id="aggTable"></div>
         <div class="row"><button class="btn small" id="btnAddAggKv">+ 添加变量</button></div>
       </div>
+      <div id="bindLockZone">
       <div class="card">
         <h2>全局函数模块（modules）</h2>
         <div class="toolbar">
@@ -187,6 +195,7 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
           <select id="copyFromSelect" style="min-width:220px"></select>
           <button class="btn small" id="btnCopyAll">复制全部</button>
           <button class="btn small secondary" id="btnBind">绑定会话</button>
+          <button class="btn small secondary" id="btnBindCode">仅绑定函数和指令</button>
         </div>
       </div>
     </div>

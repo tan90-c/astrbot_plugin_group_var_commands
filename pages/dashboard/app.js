@@ -99,6 +99,7 @@ function gcur() {
   g.groups = g.groups || {};
   g.commands = g.commands || {};
   g.var_notes = g.var_notes || {};
+  g.bind_mode = g.bind_mode === "code" ? "code" : "all";
   return g;
 }
 
@@ -123,6 +124,7 @@ function normGroup(g) {
   g.note = typeof g.note === "string" ? g.note : "";
   g.bind = typeof g.bind === "string" ? g.bind : "";
   g.var_notes = (g.var_notes && typeof g.var_notes === "object") ? g.var_notes : {};
+  g.bind_mode = g.bind_mode === "code" ? "code" : "all";
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
@@ -369,7 +371,7 @@ function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
   const notes = withNote ? getNotes() : {};
   const tb = document.createElement("table");
   tb.innerHTML = withNote
-    ? '<tr><th style="width:30%">键</th><th style="width:30%">值</th><th style="width:40%">说明</th><th>排序</th><th>操作</th></tr>'
+    ? '<tr><th style="width:27%">键</th><th style="width:27%">值</th><th style="width:34%">说明</th><th>排序</th><th>操作</th></tr>'
     : sortable
       ? "<tr><th>键</th><th>值</th><th>排序</th><th>操作</th></tr>"
       : "<tr><th>键</th><th>值</th><th>操作</th></tr>";
@@ -481,9 +483,13 @@ function renderViews() {
   const banner = $("bindBanner");
   if (g0 && g0.bind) {
     banner.style.display = "";
-    banner.textContent = cfg.groups[g0.bind]
-      ? `🔗 已绑定到「${gkeyInfo(g0.bind).name}」：内容跟随主会话且不可编辑（备注名与删除本标签除外）；解除绑定或修改主会话内容都会即时反映到这里`
-      : `⚠ 绑定的主会话已不存在，本会话指令不会触发。请点击「解绑会话」解除，或改绑其他主会话`;
+    if (!cfg.groups[g0.bind]) {
+      banner.textContent = `⚠ 绑定的主会话已不存在，本会话指令不会触发。请点击「解绑会话」解除，或改绑其他主会话`;
+    } else if (g0.bind_mode === "code") {
+      banner.textContent = `🔗 已绑定到「${gkeyInfo(g0.bind).name}」（仅函数模块与指令跟随主会话，不可编辑）；变量分组是本会话自己的内容，可正常编辑`;
+    } else {
+      banner.textContent = `🔗 已绑定到「${gkeyInfo(g0.bind).name}」：内容跟随主会话且不可编辑（备注名与删除本标签除外）；解除绑定或修改主会话内容都会即时反映到这里`;
+    }
   } else {
     banner.style.display = "none";
     banner.textContent = "";
@@ -550,12 +556,21 @@ function renderAll() {
 }
 
 function applyBoundLock() {
+  const g = gcur();
+  const bound = !!(g && g.bind);
+  const codeOnly = bound && g.bind_mode === "code";
   const zone = $("bindLockZone");
-  if (!zone) return;
-  const bound = gBound();
-  // inert：整块子树即时禁止交互（点击/键盘/焦点），解除即恢复，不污染 disabled 状态
-  zone.inert = bound;
-  zone.classList.toggle("locked", bound);
+  if (zone) {
+    // inert：整块子树即时禁止交互（点击/键盘/焦点），解除即恢复，不污染 disabled 状态
+    zone.inert = bound;
+    zone.classList.toggle("locked", bound);
+  }
+  const vars = $("varsCard");
+  if (vars) {
+    const lock = bound && !codeOnly;
+    vars.inert = lock;
+    vars.classList.toggle("locked", lock);
+  }
 }
 
 function renderCopySelect() {
@@ -571,8 +586,11 @@ function renderCopySelect() {
   if (bound && cfg.groups[g.bind]) sel.value = g.bind;
   sel.disabled = bound;
   $("btnCopyAll").disabled = bound || !others.length;
+  const codeMode = bound && g.bind_mode === "code";
   $("btnBind").textContent = bound ? "解绑会话" : "绑定会话";
   $("btnBind").disabled = bound ? false : !others.length;
+  $("btnBindCode").textContent = bound ? (codeMode ? "改为全量绑定" : "改为仅绑定函数和指令") : "仅绑定函数和指令";
+  $("btnBindCode").disabled = bound ? false : !others.length;
 }
 
 function renderModBody() {
@@ -936,6 +954,7 @@ $("btnBind").onclick = async () => {
   if (g.bind) {
     if (!(await askConfirm("解绑后本标签页恢复可编辑，原有内容保留不变（绑定期未使用）。继续？"))) return;
     g.bind = "";
+    g.bind_mode = "all";
     markDirty();
     renderAll();
     await saveNow();
@@ -947,10 +966,39 @@ $("btnBind").onclick = async () => {
   const name = gkeyInfo(srcKey).name;
   if (!(await askConfirm(`绑定后本标签页变为只读，内容跟随「${name}」变动；原有内容保留，解绑后恢复。继续？`))) return;
   g.bind = srcKey;
+  g.bind_mode = "all";
   markDirty();
   renderAll();
   await saveNow();
   toast(`已绑定到「${name}」`);
+};
+
+$("btnBindCode").onclick = async () => {
+  const g = gcur();
+  if (!g) return toast("请先进入群标签页", true);
+  if (g.bind) {
+    const toCode = g.bind_mode !== "code";
+    const msg = toCode
+      ? "切换为仅绑定函数和指令：变量分组恢复本会话自己的内容并解除锁定。继续？"
+      : "切换为全量绑定：变量分组也将跟随主会话且不可编辑（本会话原变量保留，切回即恢复）。继续？";
+    if (!(await askConfirm(msg))) return;
+    g.bind_mode = toCode ? "code" : "all";
+    markDirty();
+    renderAll();
+    await saveNow();
+    return toast(toCode ? "已切换：仅函数和指令跟随主会话" : "已切换：全量跟随主会话");
+  }
+  const srcKey = $("copyFromSelect").value;
+  if (!srcKey || !cfg.groups[srcKey]) return toast("请选择要绑定的主会话标签页", true);
+  if (cfg.groups[srcKey].bind) return toast("该标签页自身是绑定会话，不能作为主会话", true);
+  const name = gkeyInfo(srcKey).name;
+  if (!(await askConfirm(`绑定后本标签页的函数模块与指令只读跟随「${name}」；变量分组仍是本会话自己的内容，可正常编辑。继续？`))) return;
+  g.bind = srcKey;
+  g.bind_mode = "code";
+  markDirty();
+  renderAll();
+  await saveNow();
+  toast(`已绑定「${name}」（仅函数和指令）`);
 };
 
 window.addEventListener("beforeunload", (e) => {
