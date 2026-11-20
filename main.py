@@ -121,7 +121,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.5.1",
+    "1.0.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -207,7 +207,7 @@ class GroupVarCommands(Star):
             agg_in = g.get("groups", {}) or {}
             cmds_in = g.get("commands", {}) or {}
             if not isinstance(agg_in, dict):
-                raise ValueError(f"群 {gid} 的聚合分组必须是对象")
+                raise ValueError(f"群 {gid} 的 groups 必须是对象")
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
             notes_in = g.get("var_notes", {}) or {}
@@ -260,7 +260,7 @@ class GroupVarCommands(Star):
                     if re.search(r"\s", a):
                         raise ValueError(f"指令 {cname} 的别名 {a} 不能含空格")
                     if "{" in a or "}" in a:
-                        raise ValueError(f"指令 {cname} 的别名 {a} 含花括号：模板别名功能已移除，别名只能是固定文字，请在面板删除此类别名")
+                        raise ValueError(f"指令 {cname} 的别名 {a} 含花括号：别名只能是固定文字（不支持模板占位写法），请删除此类别名")
                     if a == cname:
                         continue
                     if a not in aliases:
@@ -270,7 +270,6 @@ class GroupVarCommands(Star):
                     "aliases": aliases,
                 }
             groups[gid] = {
-                "aggregate": True,
                 "note": note.strip(),
                 "bind": bind.strip(),
                 "bind_mode": bind_mode if bind.strip() else "all",
@@ -522,7 +521,7 @@ class GroupVarCommands(Star):
                 if not a or a in cmds:  # 与主名重复→主名指令赢，跳过
                     continue
                 trigger[a] = cname  # 别名间重复→后创建者覆盖
-        # 旧版模板别名（含花括号）不再支持，运行时直接忽略
+        # 花括号别名非法（不支持模板写法），运行时直接忽略
         entries = [(tok, canon) for tok, canon in trigger.items()
                    if "{" not in tok and "}" not in tok]
         entries.sort(key=lambda e: len(e[0]), reverse=True)

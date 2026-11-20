@@ -14,6 +14,6 @@
     "description": "会话来源(umo，推荐)或群号 -> {groups, commands}",
     "type": "dict",
     "default": {},
-    "hint": "建议通过控制面板“添加并绑定会话”自动填写键（会话来源umo）。每个会话独立三部分：groups=自定义变量分组(分组名->键值对)；modules=全局函数模块(模块名->Python源码，指令脚本 import 即用)；commands.<指令名> 含 script(形参从 args/cmd/alias/value 按名取用；返回值转字符串直接回复，报错静默)与 aliases(别名数组，仅固定文字，触发词后按空格拆分参数)。群内任何成员可触发。详见 README。"
+    "hint": "建议通过控制面板“添加并绑定会话”自动填写键（会话来源umo）。每个会话独立：note=备注名；bind/bind_mode=会话跟随(all=全量只读跟随主会话，code=仅函数与指令跟随、变量用自己的)；groups=自定义变量分组(分组名->键值对)；var_notes=变量说明({分组名:{键:备注}}，仅面板展示不进脚本)；modules=全局函数模块(模块名->Python源码，指令脚本 import 即用)；commands.<指令名> 含 script(形参从 args/cmd/alias/value 按名取用；返回值转字符串直接回复，报错静默)与 aliases(别名数组，仅固定文字，触发词后按空格拆分参数)。群内任何成员可触发。详见 README。"
   }
 }

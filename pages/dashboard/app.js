@@ -217,7 +217,7 @@ function pyHighlight(code) {
   return out;
 }
 
-function buildCodeEditor(getValue, setValue, onBlur, foldKey) {
+function buildCodeEditor(getValue, setValue, foldKey) {
   const box = document.createElement("div");
   box.className = "codebox";
   const bar = document.createElement("div");
@@ -321,7 +321,7 @@ function initCardFolds() {
 
 // ---------- 收割式键值表（DOM 顺序即数据顺序） ----------
 
-function kvRow(k, v, note, withNote) {
+function kvRow(k, v, note) {
   const tr = document.createElement("tr");
   const c1 = document.createElement("td");
   const c2 = document.createElement("td");
@@ -329,10 +329,11 @@ function kvRow(k, v, note, withNote) {
   const ki = document.createElement("input");
   ki.value = k;
   ki.placeholder = "键";
+  ki.style.width = "92%";
   const vi = document.createElement("input");
   vi.value = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
   vi.placeholder = "值";
-  if (withNote) { ki.style.width = "92%"; vi.style.width = "92%"; }
+  vi.style.width = "92%";
   const del = document.createElement("button");
   del.className = "btn small danger";
   del.textContent = "删除";
@@ -340,26 +341,24 @@ function kvRow(k, v, note, withNote) {
   c2.appendChild(vi);
   c3.appendChild(del);
   tr.append(c1, c2, c3);
-  if (withNote) {
-    const cN = document.createElement("td");
-    const ni = document.createElement("input");
-    ni.value = note || "";
-    ni.placeholder = "说明（用途备注，不影响脚本）";
-    ni.style.width = "96%";
-    cN.appendChild(ni);
-    tr.insertBefore(cN, c3);
-    tr._note = ni;
-    c1.style.width = "30%";
-    c2.style.width = "30%";
-    cN.style.width = "40%";
-  }
+  const cN = document.createElement("td");
+  const ni = document.createElement("input");
+  ni.value = note || "";
+  ni.placeholder = "说明（用途备注，不影响脚本）";
+  ni.style.width = "96%";
+  cN.appendChild(ni);
+  tr.insertBefore(cN, c3);
+  tr._note = ni;
+  c1.style.width = "27%";
+  c2.style.width = "27%";
+  cN.style.width = "34%";
   tr._key = ki;
   tr._val = vi;
   tr._del = del;
   return tr;
 }
 
-function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
+function kvTable(host, getDict, setDict, getNotes, setNotes) {
   host.innerHTML = "";
   const dict = getDict();
   const entries = Object.entries(dict);
@@ -367,15 +366,10 @@ function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
     host.innerHTML = '<div class="empty">暂无数据</div>';
     return;
   }
-  const withNote = !!getNotes;
-  const notes = withNote ? getNotes() : {};
+  const notes = getNotes ? getNotes() : {};
   const tb = document.createElement("table");
-  tb.innerHTML = withNote
-    ? '<tr><th style="width:27%">键</th><th style="width:27%">值</th><th style="width:34%">说明</th><th>排序</th><th>操作</th></tr>'
-    : sortable
-      ? "<tr><th>键</th><th>值</th><th>排序</th><th>操作</th></tr>"
-      : "<tr><th>键</th><th>值</th><th>操作</th></tr>";
-  for (const [k, v] of entries) tb.appendChild(kvRow(k, v, notes[k], withNote));
+  tb.innerHTML = '<tr><th style="width:27%">键</th><th style="width:27%">值</th><th style="width:34%">说明</th><th>排序</th><th>操作</th></tr>';
+  for (const [k, v] of entries) tb.appendChild(kvRow(k, v, notes[k]));
   host.appendChild(tb);
 
   const harvest = () => {
@@ -386,12 +380,12 @@ function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
       const k = tr._key.value.trim();
       if (!k) continue;
       out[k] = tr._val.value;
-      if (withNote && tr._note) {
+      if (tr._note) {
         const nv = tr._note.value.trim();
         if (nv) nd[k] = nv;
       }
     }
-    if (withNote && setNotes) setNotes(nd);
+    if (setNotes) setNotes(nd);
     setDict(out);
     markDirty();
     renderRaw();
@@ -406,7 +400,7 @@ function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
       harvest();
       if (k) toast(`已删除并保存：${k}`);
     };
-    if (sortable) {
+    {
       const cell = document.createElement("td");
       const up = document.createElement("button");
       up.className = "btn small secondary";
@@ -424,7 +418,7 @@ function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
         if (nx && nx._key) { tb.insertBefore(nx, tr); harvest(); }
       };
       cell.append(up, down);
-      tr.insertBefore(cell, tr.children[withNote ? 3 : 2]);
+      tr.insertBefore(cell, tr.children[3]);
     }
   }
 }
@@ -520,7 +514,6 @@ function renderAll() {
     kvTable($("aggTable"),
       () => g.groups[selAgg],
       (d) => { g.groups[selAgg] = d; },
-      true,
       () => g.var_notes[selAgg] || {},
       (n) => {
         if (Object.keys(n).length) g.var_notes[selAgg] = n;
@@ -603,7 +596,7 @@ function renderModBody() {
   const lab = document.createElement("div");
   lab.className = "hint";
   lab.textContent = "模块 " + selMod + ".py（定义若干函数，指令脚本 import 即用）";
-  host.append(lab, buildCodeEditor(() => g.modules[selMod], (v) => { g.modules[selMod] = v; }, undefined, "mod:" + selMod));
+  host.append(lab, buildCodeEditor(() => g.modules[selMod], (v) => { g.modules[selMod] = v; }, "mod:" + selMod));
 }
 
 function renderCmdBody() {
@@ -626,12 +619,12 @@ function renderCmdBody() {
   const lab = document.createElement("div");
   lab.className = "hint";
   lab.textContent = "Python 脚本（def main(...)；返回值转字符串直接回复；报错超时静默不崩）";
-  host.append(lab, buildCodeEditor(() => c.script, (v) => { c.script = v; }, undefined, "cmd:" + selCmd));
+  host.append(lab, buildCodeEditor(() => c.script, (v) => { c.script = v; }, "cmd:" + selCmd));
 
   const labAlias = document.createElement("div");
   labAlias.className = "hint";
   labAlias.style.marginTop = "12px";
-  labAlias.textContent = "附属指令名（别名，可多个）：固定文字触发词，发送「别名 参数…」即可触发（不带花括号/模板，旧的花括号模板别名已移除，保存时会被拒绝）；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效；长触发词优先";
+  labAlias.textContent = "附属指令名（别名，可多个）：固定文字触发词，发送「别名 参数…」即可触发（别名不允许含花括号，不支持模板占位写法）；与其他指令主名重复时主名指令优先，别名间重复时后创建的指令生效；长触发词优先";
   const tbAl = document.createElement("table");
   tbAl.innerHTML = "<tr><th>别名</th><th>操作</th></tr>";
   const alRows = [];
@@ -732,7 +725,7 @@ $("btnAddFromSession").onclick = async () => {
   const key = x.umo || x.group_id;
   cfg.groups = cfg.groups || {};
   if (!cfg.groups[key]) {
-    cfg.groups[key] = { aggregate: true, groups: {}, commands: {} };
+    cfg.groups[key] = { groups: {}, commands: {} };
     markDirty();
     await saveNow(true);
     toast(`已新增标签页：${x.group_name || gid}`);
