@@ -11,6 +11,7 @@ AstrBot 插件：自定义函数指令 (astrbot_plugin_group_var_commands)
 - groups.<会话>.groups    自定义变量分组（分组名 -> 键值对）
 - groups.<会话>.note      备注名（面板左侧列表显示用，可空）
 - groups.<会话>.bind      绑定的主会话 umo（非空=本会话只读跟随主会话，原内容保留）
+- groups.<会话>.var_notes 变量说明备注 {分组名: {键: 说明}}（仅面板展示，不进脚本 args）
 - groups.<会话>.modules   全局函数模块（模块名 -> Python 源码，指令脚本 import 即用）
 - groups.<会话>.commands  自定义指令（script + aliases）
 - script_timeout          脚本执行超时秒数
@@ -119,7 +120,7 @@ sys.stdout.write("\n###RES###\n" + json.dumps(ret, ensure_ascii=False, default=s
     PLUGIN_ID,
     "tan90-c",
     "会话绑定+变量分组+全局函数模块+指令脚本执行，带 WebUI 可视化控制面板",
-    "1.2.1",
+    "1.3.0",
     "https://github.com/tan90-c/astrbot_plugin_group_var_commands",
 )
 class GroupVarCommands(Star):
@@ -208,6 +209,16 @@ class GroupVarCommands(Star):
                 raise ValueError(f"群 {gid} 的聚合分组必须是对象")
             if not isinstance(cmds_in, dict):
                 raise ValueError(f"群 {gid} 的 commands 必须是对象")
+            notes_in = g.get("var_notes", {}) or {}
+            if not isinstance(notes_in, dict):
+                raise ValueError(f"会话 {gid} 的 var_notes 必须是对象")
+            var_notes = {}
+            for an, nd in notes_in.items():
+                if not isinstance(nd, dict):
+                    continue
+                cleaned_n = {str(k): str(v).strip() for k, v in nd.items() if str(v).strip()}
+                if cleaned_n:
+                    var_notes[str(an)] = cleaned_n
             mods_in = g.get("modules", {}) or {}
             note = g.get("note", "") or ""
             if not isinstance(note, str):
@@ -258,6 +269,7 @@ class GroupVarCommands(Star):
                 "aggregate": True,
                 "note": note.strip(),
                 "bind": bind.strip(),
+                "var_notes": var_notes,
                 "modules": modules,
                 "groups": {
                     str(k): (copy.deepcopy(v) if isinstance(v, dict) else {})

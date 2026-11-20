@@ -98,6 +98,7 @@ function gcur() {
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
+  g.var_notes = g.var_notes || {};
   return g;
 }
 
@@ -121,6 +122,7 @@ function gEff() {
 function normGroup(g) {
   g.note = typeof g.note === "string" ? g.note : "";
   g.bind = typeof g.bind === "string" ? g.bind : "";
+  g.var_notes = (g.var_notes && typeof g.var_notes === "object") ? g.var_notes : {};
   g.modules = g.modules || {};
   g.groups = g.groups || {};
   g.commands = g.commands || {};
@@ -275,7 +277,7 @@ function buildCodeEditor(getValue, setValue, onBlur) {
 
 // ---------- 收割式键值表（DOM 顺序即数据顺序） ----------
 
-function kvRow(k, v) {
+function kvRow(k, v, note, withNote) {
   const tr = document.createElement("tr");
   const c1 = document.createElement("td");
   const c2 = document.createElement("td");
@@ -286,6 +288,7 @@ function kvRow(k, v) {
   const vi = document.createElement("input");
   vi.value = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
   vi.placeholder = "值";
+  if (withNote) { ki.style.width = "92%"; vi.style.width = "92%"; }
   const del = document.createElement("button");
   del.className = "btn small danger";
   del.textContent = "删除";
@@ -293,13 +296,26 @@ function kvRow(k, v) {
   c2.appendChild(vi);
   c3.appendChild(del);
   tr.append(c1, c2, c3);
+  if (withNote) {
+    const cN = document.createElement("td");
+    const ni = document.createElement("input");
+    ni.value = note || "";
+    ni.placeholder = "说明（用途备注，不影响脚本）";
+    ni.style.width = "96%";
+    cN.appendChild(ni);
+    tr.insertBefore(cN, c3);
+    tr._note = ni;
+    c1.style.width = "30%";
+    c2.style.width = "30%";
+    cN.style.width = "40%";
+  }
   tr._key = ki;
   tr._val = vi;
   tr._del = del;
   return tr;
 }
 
-function kvTable(host, getDict, setDict, sortable) {
+function kvTable(host, getDict, setDict, sortable, getNotes, setNotes) {
   host.innerHTML = "";
   const dict = getDict();
   const entries = Object.entries(dict);
@@ -307,21 +323,31 @@ function kvTable(host, getDict, setDict, sortable) {
     host.innerHTML = '<div class="empty">暂无数据</div>';
     return;
   }
+  const withNote = !!getNotes;
+  const notes = withNote ? getNotes() : {};
   const tb = document.createElement("table");
-  tb.innerHTML = sortable
-    ? "<tr><th>键</th><th>值</th><th>排序</th><th>操作</th></tr>"
-    : "<tr><th>键</th><th>值</th><th>操作</th></tr>";
-  for (const [k, v] of entries) tb.appendChild(kvRow(k, v));
+  tb.innerHTML = withNote
+    ? '<tr><th style="width:30%">键</th><th style="width:30%">值</th><th style="width:40%">说明</th><th>排序</th><th>操作</th></tr>'
+    : sortable
+      ? "<tr><th>键</th><th>值</th><th>排序</th><th>操作</th></tr>"
+      : "<tr><th>键</th><th>值</th><th>操作</th></tr>";
+  for (const [k, v] of entries) tb.appendChild(kvRow(k, v, notes[k], withNote));
   host.appendChild(tb);
 
   const harvest = () => {
     const out = {};
+    const nd = {};
     for (const tr of tb.querySelectorAll("tr")) {
       if (!tr._key) continue;
       const k = tr._key.value.trim();
       if (!k) continue;
       out[k] = tr._val.value;
+      if (withNote && tr._note) {
+        const nv = tr._note.value.trim();
+        if (nv) nd[k] = nv;
+      }
     }
+    if (withNote && setNotes) setNotes(nd);
     setDict(out);
     markDirty();
     renderRaw();
@@ -354,7 +380,7 @@ function kvTable(host, getDict, setDict, sortable) {
         if (nx && nx._key) { tb.insertBefore(nx, tr); harvest(); }
       };
       cell.append(up, down);
-      tr.insertBefore(cell, tr.children[2]);
+      tr.insertBefore(cell, tr.children[withNote ? 3 : 2]);
     }
   }
 }
@@ -443,7 +469,15 @@ function renderAll() {
   $("btnAddAggKv").disabled = !selAgg;
 
   if (selAgg) {
-    kvTable($("aggTable"), () => g.groups[selAgg], (d) => { g.groups[selAgg] = d; }, true);
+    kvTable($("aggTable"),
+      () => g.groups[selAgg],
+      (d) => { g.groups[selAgg] = d; },
+      true,
+      () => g.var_notes[selAgg] || {},
+      (n) => {
+        if (Object.keys(n).length) g.var_notes[selAgg] = n;
+        else delete g.var_notes[selAgg];
+      });
   } else {
     $("aggTable").innerHTML = '<div class="empty">请先添加分组</div>';
   }
@@ -703,6 +737,7 @@ $("btnCopyAgg").onclick = async () => {
   }
   if (g.groups[n]) return toast("同名分组已存在", true);
   g.groups[n] = JSON.parse(JSON.stringify(g.groups[src]));
+  if (g.var_notes[src]) g.var_notes[n] = JSON.parse(JSON.stringify(g.var_notes[src]));
   selAgg = n;
   $("newAgg").value = "";
   markDirty();
@@ -720,6 +755,7 @@ $("btnRenameAgg").onclick = async () => {
   if (g.groups[n]) return toast("同名分组已存在", true);
   g.groups[n] = g.groups[selAgg];
   delete g.groups[selAgg];
+  if (g.var_notes[selAgg]) { g.var_notes[n] = g.var_notes[selAgg]; delete g.var_notes[selAgg]; }
   selAgg = n;
   $("newAgg").value = "";
   markDirty();
@@ -731,6 +767,7 @@ $("btnDelAgg").onclick = async () => {
   if (!g || !selAgg) return toast("请先选择分组", true);
   if (!(await askConfirm(`确定删除分组「${selAgg}」？`))) return;
   delete g.groups[selAgg];
+  delete g.var_notes[selAgg];
   selAgg = "";
   markDirty();
   renderAll();
@@ -835,6 +872,7 @@ async function copyAllFrom(srcKey) {
   g.groups = JSON.parse(JSON.stringify(src.groups || {}));
   g.modules = JSON.parse(JSON.stringify(src.modules || {}));
   g.commands = JSON.parse(JSON.stringify(src.commands || {}));
+  g.var_notes = JSON.parse(JSON.stringify(src.var_notes || {}));
   selAgg = "";
   selCmd = "";
   selMod = "";
