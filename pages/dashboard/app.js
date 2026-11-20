@@ -480,9 +480,9 @@ function renderViews() {
     if (!cfg.groups[g0.bind]) {
       banner.textContent = `⚠ 绑定的主会话已不存在，本会话指令不会触发。请点击「解绑会话」解除，或改绑其他主会话`;
     } else if (g0.bind_mode === "code") {
-      banner.textContent = `🔗 已绑定到「${gkeyInfo(g0.bind).name}」（仅函数模块与指令跟随主会话，不可编辑）；变量分组是本会话自己的内容，可正常编辑`;
+      banner.textContent = `🔗 已绑定到「${gkeyInfo(g0.bind).name}」（仅函数模块与指令跟随主会话，可预览复制、不可修改）；变量分组是本会话自己的内容，可正常编辑`;
     } else {
-      banner.textContent = `🔗 已绑定到「${gkeyInfo(g0.bind).name}」：内容跟随主会话且不可编辑（备注名与删除本标签除外）；解除绑定或修改主会话内容都会即时反映到这里`;
+      banner.textContent = `🔗 已绑定到「${gkeyInfo(g0.bind).name}」：内容跟随主会话（可折叠/展开预览，代码可选中复制、滚动查看，不可修改）；修改主会话内容会即时反映到这里`;
     }
   } else {
     banner.style.display = "none";
@@ -548,16 +548,26 @@ function renderAll() {
   $("dirtyTip").textContent = dirty ? "● 未保存" : "";
 }
 
+const RENDER_MANAGED = new Set(["btnRenameAgg", "btnCopyAgg", "btnDelAgg", "btnAddAggKv",
+  "btnDelMod", "btnCopyAll", "btnBind", "btnBindCode", "copyFromSelect"]);
+
 function applyBoundLock() {
   const g = gcur();
   const bound = !!(g && g.bind);
   const codeOnly = bound && g.bind_mode === "code";
-  // 每张卡片独立吸附灰罩 + inert（即时禁交互、解除即恢复，不污染 disabled）
+  // 只读模式：灰罩纯视觉（pointer-events:none 不挡选复制/滚动/折叠），
+  // 防修改靠 readOnly（可选中复制）与 disabled；折叠按钮恒可用；
+  // 解锁时 render 管理的按钮由其自身状态负责，其余直接恢复
   const set = (id, lock) => {
     const el = $(id);
     if (!el) return;
-    el.inert = lock;
     el.classList.toggle("locked", lock);
+    for (const f of el.querySelectorAll("input, textarea")) f.readOnly = lock;
+    for (const b of el.querySelectorAll("select, button")) {
+      if (b.classList.contains("fold-btn")) continue;
+      if (lock) { b.disabled = true; continue; }
+      if (!RENDER_MANAGED.has(b.id)) b.disabled = false;
+    }
   };
   set("varsCard", bound && !codeOnly);
   set("modCard", bound);
