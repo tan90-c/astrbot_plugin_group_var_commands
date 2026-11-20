@@ -474,12 +474,12 @@ function renderAll() {
 }
 
 function applyBoundLock() {
-  if (!gBound()) return;
-  const host = $("groupView");
-  host.querySelectorAll("input, textarea, select, button").forEach((el) => {
-    if (el.id === "groupNote" || el.id === "btnDelGroup" || el.id === "btnBind") return;
-    el.disabled = true;
-  });
+  const zone = $("bindLockZone");
+  if (!zone) return;
+  const bound = gBound();
+  // inert：整块子树即时禁止交互（点击/键盘/焦点），解除即恢复，不污染 disabled 状态
+  zone.inert = bound;
+  zone.classList.toggle("locked", bound);
 }
 
 function renderCopySelect() {
