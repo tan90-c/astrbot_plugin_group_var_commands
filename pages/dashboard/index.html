@@ -76,7 +76,6 @@ textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;f
 #modalMask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:center;justify-content:center}
 #modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;max-width:420px;width:88vw;box-shadow:0 12px 32px rgba(0,0,0,.3)}
 #modalMsg{font-size:13px;margin-bottom:14px;white-space:pre-wrap}
-#bindLockZone { position: relative; }
 .card.locked { position: relative; filter: saturate(0.65) opacity(0.9); }
 .card.locked::after {
   content: ""; position: absolute; inset: -5px; z-index: 30;
@@ -85,13 +84,6 @@ textarea.json{width:100%;min-height:170px;font-family:Consolas,Menlo,monospace;f
   border-radius: 14px; cursor: not-allowed;
 }
 table th:nth-last-child(-n+2), table td:nth-last-child(-n+2) { width: 1%; white-space: nowrap; }
-#bindLockZone.locked::after {
-  content: ""; position: absolute; inset: -6px; z-index: 30;
-  background: rgba(120, 124, 132, 0.18);
-  border: 1px solid rgba(120, 124, 132, 0.35);
-  border-radius: 14px; cursor: not-allowed;
-}
-#bindLockZone.locked { filter: saturate(0.65) opacity(0.9); }
 textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
 </style>
 </head>
@@ -156,8 +148,7 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
         <div id="aggTable"></div>
         <div class="row"><button class="btn small" id="btnAddAggKv">+ 添加变量</button></div>
       </div>
-      <div id="bindLockZone">
-      <div class="card">
+      <div class="card" id="modCard">
         <h2>全局函数模块（modules）</h2>
         <div class="toolbar">
           <select id="modSelect" style="min-width:180px"></select>
@@ -169,7 +160,7 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
         <div id="modBody"><div class="empty">请先创建或选择模块</div></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="cmdCard">
         <h2>自定义指令</h2>
         <div class="toolbar">
           <select id="cmdSelect" style="min-width:180px"></select>
@@ -180,13 +171,12 @@ textarea[inert], button[inert], select[inert], input[inert] { opacity: 0.55; }
         <div class="hint" style="margin:8px 0">群成员发送「指令名/别名 值」或加 / 前缀触发；别名可多个，均为固定文字触发词；脚本 def main(...) 取默认入参（args/cmd/alias/value/…），返回值转字符串直接回复，报错时静默。</div>
         <div id="cmdBody"><div class="empty">请先创建或选择指令</div></div>
       </div>
-      <div class="card">
+      <div class="card" id="advCard">
         <h2>高级：完整 JSON（当前群，自动与页面同步）</h2>
         <textarea id="rawJson" class="json" spellcheck="false"></textarea>
         <div class="row">
           <button class="btn small" id="btnRawApply">导入此 JSON 并覆盖当前会话</button>
         </div>
-      </div>
       </div>
       <div class="card">
         <h2>会话复制与绑定</h2>

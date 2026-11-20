@@ -559,18 +559,17 @@ function applyBoundLock() {
   const g = gcur();
   const bound = !!(g && g.bind);
   const codeOnly = bound && g.bind_mode === "code";
-  const zone = $("bindLockZone");
-  if (zone) {
-    // inert：整块子树即时禁止交互（点击/键盘/焦点），解除即恢复，不污染 disabled 状态
-    zone.inert = bound;
-    zone.classList.toggle("locked", bound);
-  }
-  const vars = $("varsCard");
-  if (vars) {
-    const lock = bound && !codeOnly;
-    vars.inert = lock;
-    vars.classList.toggle("locked", lock);
-  }
+  // 每张卡片独立吸附灰罩 + inert（即时禁交互、解除即恢复，不污染 disabled）
+  const set = (id, lock) => {
+    const el = $(id);
+    if (!el) return;
+    el.inert = lock;
+    el.classList.toggle("locked", lock);
+  };
+  set("varsCard", bound && !codeOnly);
+  set("modCard", bound);
+  set("cmdCard", bound);
+  set("advCard", bound);
 }
 
 function renderCopySelect() {
